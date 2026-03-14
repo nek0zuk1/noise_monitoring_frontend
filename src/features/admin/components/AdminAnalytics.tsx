@@ -1,74 +1,174 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { Colors } from '../../../core/theme/Colors';
 import { MaterialIcons } from '@expo/vector-icons';
+import { apiClient } from '../../../core/api/apiClient';
+
+type NoiseBucket = {
+    label: string;
+    avg_decibels: number;
+    count: number;
+};
+
+type NoisePayload = {
+    average_decibels: number;
+    total_readings: number;
+    noise_summary: {
+        Normal: number;
+        Elevated: number;
+        High: number;
+    };
+    graph: NoiseBucket[];
+};
 
 export default function AdminAnalytics() {
-    const kpiCards = [
-        { icon: 'people', value: '142', label: 'Total Users', tint: Colors.primaryDark },
-        { icon: 'sensors', value: '12', label: 'Active Sensors', tint: Colors.statusWarning },
-        { icon: 'report', value: '8', label: 'Violations Today', tint: Colors.statusCritical },
-        { icon: 'add-a-photo', value: '45', label: 'Uploaded Proofs', tint: Colors.chartBlue },
-    ] as const;
+    const [isLoading, setIsLoading] = React.useState(true);
+    const [summary, setSummary] = React.useState({ total_reports: 0, pending_reports: 0, reports_today: 0 });
+    const [recentReports, setRecentReports] = React.useState<Array<{ report_text?: string; created_at?: string; status?: string }>>([]);
+    const [noise24h, setNoise24h] = React.useState<NoisePayload>({
+        average_decibels: 0,
+        total_readings: 0,
+        noise_summary: { Normal: 0, Elevated: 0, High: 0 },
+        graph: [],
+    });
+    const [noise7d, setNoise7d] = React.useState<NoisePayload>({
+        average_decibels: 0,
+        total_readings: 0,
+        noise_summary: { Normal: 0, Elevated: 0, High: 0 },
+        graph: [],
+    });
+
+    React.useEffect(() => {
+        const fetchSummary = async () => {
+            try {
+                const [reportsRes, noise24Res, noise7Res] = await Promise.all([
+                    apiClient.get('/api/admin/reports/summary'),
+                    apiClient.get('/api/admin/noise-summary?window=24h'),
+                    apiClient.get('/api/admin/noise-summary?window=7d'),
+                ]);
+
+                setSummary(reportsRes.data?.summary || { total_reports: 0, pending_reports: 0, reports_today: 0 });
+                setRecentReports(reportsRes.data?.recent_reports || []);
+                setNoise24h(noise24Res.data || noise24h);
+                setNoise7d(noise7Res.data || noise7d);
+            } catch {
+                // Keep fallback values if backend is unavailable.
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        void fetchSummary();
+    }, []);
+
+    const max24h = React.useMemo(
+        () => Math.max(...noise24h.graph.map((item) => item.avg_decibels), 1),
+        [noise24h.graph]
+    );
+    const max7d = React.useMemo(
+        () => Math.max(...noise7d.graph.map((item) => item.avg_decibels), 1),
+        [noise7d.graph]
+    );
+
+    const getBarColor = (db: number) => {
+        if (db >= 70) return Colors.noiseCritical;
+        if (db >= 55) return Colors.noiseElevated;
+        return Colors.noiseNormal;
+    };
 
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
             <View style={styles.headerCard}>
-                <Text style={styles.sectionLabel}>Operations Intelligence</Text>
-                <Text style={styles.title}>System Summary and Reports</Text>
+                <Text style={styles.sectionLabel}>Deep Dive</Text>
+                <Text style={styles.title}>Reports and Trends</Text>
                 <Text style={styles.subtitle}>
-                    Consolidated operational metrics and incident activity from monitored zones.
+                    Detailed view for report queue handling and noise-trend analysis.
                 </Text>
             </View>
 
-            <View style={styles.statsContainer}>
-                {kpiCards.map((card) => (
-                    <View key={card.label} style={styles.statCard}>
-                        <View style={[styles.iconWrap, { backgroundColor: `${card.tint}20` }]}>
-                            <MaterialIcons name={card.icon} size={20} color={card.tint} />
-                        </View>
-                        <Text style={styles.statNumber}>{card.value}</Text>
-                        <Text style={styles.statLabel}>{card.label}</Text>
-                    </View>
-                ))}
-            </View>
-
-            <View style={styles.insightRow}>
-                <View style={styles.insightCard}>
-                    <Text style={styles.sectionTitle}>Compliance Snapshot</Text>
-                    <Text style={styles.insightHeadline}>83% zones within safe threshold</Text>
-                    <Text style={styles.insightSub}>Most elevated cases occurred from 8:00 PM to 11:00 PM.</Text>
+            <View style={styles.queueRow}>
+                <View style={styles.queueCard}>
+                    <MaterialIcons name="assignment" size={18} color={Colors.primaryDark} />
+                    <Text style={styles.queueValue}>{summary.total_reports}</Text>
+                    <Text style={styles.queueLabel}>Total Reports</Text>
                 </View>
-                <View style={styles.insightCard}>
-                    <Text style={styles.sectionTitle}>Trend Direction</Text>
-                    <Text style={styles.insightHeadline}>-12% weekly violation rate</Text>
-                    <Text style={styles.insightSub}>Improvement after stricter late-night enforcement.</Text>
+                <View style={styles.queueCard}>
+                    <MaterialIcons name="pending-actions" size={18} color={Colors.statusWarning} />
+                    <Text style={styles.queueValue}>{summary.pending_reports}</Text>
+                    <Text style={styles.queueLabel}>Pending Review</Text>
+                </View>
+                <View style={styles.queueCard}>
+                    <MaterialIcons name="today" size={18} color={Colors.chartBlue} />
+                    <Text style={styles.queueValue}>{summary.reports_today}</Text>
+                    <Text style={styles.queueLabel}>Today</Text>
                 </View>
             </View>
 
             <View style={styles.reportSection}>
-                <Text style={styles.sectionTitle}>Recent Noise Activity Timeline</Text>
-                <View style={styles.reportItem}>
-                    <View style={[styles.timelineDot, { backgroundColor: Colors.statusWarning }]} />
-                    <View style={styles.reportTextWrap}>
-                        <Text style={styles.reportTime}>Today, 10:45 AM</Text>
-                    <Text style={styles.reportDesc}>Zone A exceeded 85 dB for 15 minutes.</Text>
+                <Text style={styles.sectionTitle}>24h Noise Trend (Hourly Avg dB)</Text>
+                <Text style={styles.sectionMeta}>Average: {noise24h.average_decibels.toFixed(1)} dB</Text>
+                {isLoading ? (
+                    <ActivityIndicator color={Colors.primaryDark} />
+                ) : (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.graphRow}>
+                        {noise24h.graph.map((bucket, index) => (
+                            <View key={`${bucket.label}-${index}`} style={styles.barColumn}>
+                                <View
+                                    style={[
+                                        styles.bar,
+                                        {
+                                            height: Math.max(4, (bucket.avg_decibels / max24h) * 92),
+                                            backgroundColor: getBarColor(bucket.avg_decibels),
+                                        },
+                                    ]}
+                                />
+                                <Text style={styles.barLabel}>{bucket.label}</Text>
+                            </View>
+                        ))}
+                    </ScrollView>
+                )}
+            </View>
+
+            <View style={styles.reportSection}>
+                <Text style={styles.sectionTitle}>7d Noise Trend (Daily Avg dB)</Text>
+                <Text style={styles.sectionMeta}>Average: {noise7d.average_decibels.toFixed(1)} dB</Text>
+                {isLoading ? (
+                    <ActivityIndicator color={Colors.primaryDark} />
+                ) : (
+                    <View style={styles.graphRow}>
+                        {noise7d.graph.map((bucket, index) => (
+                            <View key={`${bucket.label}-${index}`} style={styles.barColumn}>
+                                <View
+                                    style={[
+                                        styles.bar,
+                                        {
+                                            height: Math.max(4, (bucket.avg_decibels / max7d) * 92),
+                                            backgroundColor: getBarColor(bucket.avg_decibels),
+                                        },
+                                    ]}
+                                />
+                                <Text style={styles.barLabel}>{bucket.label}</Text>
+                            </View>
+                        ))}
                     </View>
-                </View>
-                <View style={styles.reportItem}>
-                    <View style={[styles.timelineDot, { backgroundColor: Colors.statusCritical }]} />
-                    <View style={styles.reportTextWrap}>
-                        <Text style={styles.reportTime}>Yesterday, 09:20 PM</Text>
-                    <Text style={styles.reportDesc}>Zone C registered sudden noise spike (110 dB).</Text>
-                    </View>
-                </View>
-                <View style={styles.reportItem}>
-                    <View style={[styles.timelineDot, { backgroundColor: Colors.primaryDark }]} />
-                    <View style={styles.reportTextWrap}>
-                        <Text style={styles.reportTime}>Yesterday, 03:15 PM</Text>
-                        <Text style={styles.reportDesc}>3 new user proofs submitted for Zone B construction noise.</Text>
-                    </View>
-                </View>
+                )}
+            </View>
+
+            <View style={styles.reportSection}>
+                <Text style={styles.sectionTitle}>Report Queue</Text>
+                {recentReports.length === 0 ? (
+                    <Text style={styles.reportTime}>No client reports yet.</Text>
+                ) : (
+                    recentReports.map((report, index) => (
+                        <View key={`${report.created_at || 'report'}-${index}`} style={styles.reportItem}>
+                            <View style={[styles.timelineDot, { backgroundColor: report.status === 'pending' ? Colors.statusWarning : Colors.noiseNormal }]} />
+                            <View style={styles.reportTextWrap}>
+                                <Text style={styles.reportTime}>{report.created_at ? new Date(report.created_at).toLocaleString() : 'Unknown time'}</Text>
+                                <Text style={styles.reportDesc}>{report.report_text || 'Image-only report submission'}</Text>
+                            </View>
+                        </View>
+                    ))
+                )}
             </View>
         </ScrollView>
     );
@@ -105,65 +205,30 @@ const styles = StyleSheet.create({
         color: Colors.textSecondary,
         lineHeight: 20,
     },
-    statsContainer: {
+    queueRow: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
         gap: 12,
         marginBottom: 14,
     },
-    statCard: {
+    queueCard: {
         backgroundColor: Colors.bgCard,
         borderRadius: 12,
         padding: 16,
         flex: 1,
-        minWidth: 190,
         borderWidth: 1,
         borderColor: Colors.borderLight,
-    },
-    iconWrap: {
-        width: 38,
-        height: 38,
-        borderRadius: 10,
         alignItems: 'center',
-        justifyContent: 'center',
     },
-    statNumber: {
-        fontSize: 28,
+    queueValue: {
+        fontSize: 24,
         fontWeight: '700',
-        marginTop: 10,
-        marginBottom: 4,
+        marginTop: 8,
         color: Colors.primaryDark,
     },
-    statLabel: {
-        fontSize: 14,
+    queueLabel: {
+        fontSize: 12,
         color: Colors.textSecondary,
-    },
-    insightRow: {
-        flexDirection: 'row',
-        gap: 12,
-        flexWrap: 'wrap',
-        marginBottom: 14,
-    },
-    insightCard: {
-        flex: 1,
-        minWidth: 240,
-        backgroundColor: Colors.bgCard,
-        borderWidth: 1,
-        borderColor: Colors.borderLight,
-        borderRadius: 12,
-        padding: 16,
-    },
-    insightHeadline: {
         marginTop: 4,
-        fontSize: 18,
-        fontWeight: '700',
-        color: Colors.textPrimary,
-    },
-    insightSub: {
-        marginTop: 8,
-        fontSize: 13,
-        color: Colors.textSecondary,
-        lineHeight: 18,
     },
     reportSection: {
         backgroundColor: Colors.bgCard,
@@ -180,8 +245,13 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 15,
         fontWeight: '700',
-        marginBottom: 10,
+        marginBottom: 6,
         color: Colors.textPrimary,
+    },
+    sectionMeta: {
+        fontSize: 12,
+        color: Colors.textMuted,
+        marginBottom: 10,
     },
     reportItem: {
         flexDirection: 'row',
@@ -208,5 +278,26 @@ const styles = StyleSheet.create({
     reportDesc: {
         fontSize: 15,
         color: Colors.textPrimary,
+    },
+    graphRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        gap: 8,
+        minHeight: 128,
+        paddingTop: 8,
+    },
+    barColumn: {
+        alignItems: 'center',
+        width: 28,
+    },
+    bar: {
+        width: 16,
+        borderTopLeftRadius: 5,
+        borderTopRightRadius: 5,
+    },
+    barLabel: {
+        fontSize: 10,
+        color: Colors.textMuted,
+        marginTop: 6,
     },
 });

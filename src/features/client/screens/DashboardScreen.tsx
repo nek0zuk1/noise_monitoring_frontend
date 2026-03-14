@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useContext, useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -7,11 +7,13 @@ import {
     TouchableOpacity,
     Animated,
     Vibration,
+    Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, getNoiseLevelColor, getNoiseLevelLabel } from '../../../core/theme/Colors';
 import AnimatedScreen from '../../../components/AnimatedScreen';
+import { AuthContext } from '../../../core/auth/AuthContext';
 
 type SensorData = {
     id: string;
@@ -38,6 +40,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function DashboardScreen() {
+    const { logout } = useContext(AuthContext);
     const insets = useSafeAreaInsets();
     const [sensors] = useState<SensorData[]>(INITIAL_SENSORS);
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -113,6 +116,19 @@ export default function DashboardScreen() {
     const isNight = currentTime.getHours() >= 22 || currentTime.getHours() < 7;
     const activeSensors = sensors.filter(s => s.status === 'active').length;
 
+    const handleLogout = () => {
+        Alert.alert('Log out', 'Sign out from mobile now?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Log out',
+                style: 'destructive',
+                onPress: () => {
+                    void logout();
+                },
+            },
+        ]);
+    };
+
     return (
         <AnimatedScreen>
             <ScrollView
@@ -128,15 +144,25 @@ export default function DashboardScreen() {
                     <View style={[StyleSheet.absoluteFillObject, { backgroundColor: Colors.transparentBlack12 }]} />
 
                     <View style={styles.headerTop}>
-                        <View>
+                        <View style={styles.headerLeft}>
                             <Text style={styles.greeting}>{getGreeting()}</Text>
                             <Text style={styles.dateText}>
                                 {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                             </Text>
                         </View>
-                        <Text style={styles.clockText}>
-                            {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
+                        <View style={styles.headerRight}>
+                            <TouchableOpacity
+                                style={styles.logoutIconButton}
+                                onPress={handleLogout}
+                                activeOpacity={0.8}
+                                accessibilityLabel="Log out"
+                            >
+                                <MaterialIcons name="logout" size={16} color={Colors.textOnDarkSub} />
+                            </TouchableOpacity>
+                            <Text style={styles.clockText}>
+                                {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                        </View>
                     </View>
 
                     <View style={styles.statusCard}>
@@ -159,6 +185,21 @@ export default function DashboardScreen() {
                 </Animated.View>
 
                 <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+                    <View style={styles.kpiStrip}>
+                        <View style={styles.kpiPill}>
+                            <Text style={styles.kpiPillLabel}>Active</Text>
+                            <Text style={styles.kpiPillValue}>{activeSensors}</Text>
+                        </View>
+                        <View style={styles.kpiPill}>
+                            <Text style={styles.kpiPillLabel}>Average</Text>
+                            <Text style={styles.kpiPillValue}>{avgDb} dB</Text>
+                        </View>
+                        <View style={styles.kpiPill}>
+                            <Text style={styles.kpiPillLabel}>Last Sync</Text>
+                            <Text style={styles.kpiPillValue}>{lastUpdated}</Text>
+                        </View>
+                    </View>
+
                     {/* ── Sensor Network Header ── */}
                     <View style={styles.sectionHeader}>
                         <View style={styles.sectionTitleRow}>
@@ -254,11 +295,25 @@ const styles = StyleSheet.create({
     },
     headerTop: {
         flexDirection: 'row', justifyContent: 'space-between',
-        alignItems: 'flex-start', marginBottom: 22,
+        alignItems: 'center', marginBottom: 22,
     },
-    greeting: { fontSize: 22, fontWeight: '700', color: Colors.textOnDark },
+    headerLeft: {
+        justifyContent: 'center',
+    },
+    greeting: { fontSize: 22, fontWeight: '700', color: Colors.textOnDark, marginTop: 45},
     dateText: { fontSize: 13, color: Colors.textOnDarkSub, marginTop: 3 },
     clockText: { fontSize: 30, fontWeight: '200', color: Colors.textOnDark },
+    headerRight: { alignItems: 'flex-end', gap: 8 },
+    logoutIconButton: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: Colors.transparentWhite22,
+        backgroundColor: Colors.transparentWhite12,
+    },
 
     statusCard: {
         flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -275,6 +330,33 @@ const styles = StyleSheet.create({
     },
 
     content: { paddingHorizontal: 20, marginTop: 20 },
+    kpiStrip: {
+        flexDirection: 'row',
+        gap: 8,
+        marginBottom: 14,
+    },
+    kpiPill: {
+        flex: 1,
+        backgroundColor: Colors.bgCard,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+    },
+    kpiPillLabel: {
+        fontSize: 10,
+        textTransform: 'uppercase',
+        color: Colors.textMuted,
+        letterSpacing: 0.5,
+        fontWeight: '700',
+    },
+    kpiPillValue: {
+        marginTop: 4,
+        fontSize: 12,
+        color: Colors.textPrimary,
+        fontWeight: '800',
+    },
     sectionHeader: {
         flexDirection: 'row', justifyContent: 'space-between',
         alignItems: 'center', marginBottom: 14,

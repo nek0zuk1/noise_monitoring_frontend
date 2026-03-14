@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../core/theme/Colors';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AnimatedScreen from '../../../components/AnimatedScreen';
+import { apiClient } from '../../../core/api/apiClient';
 
 export default function UploadProofScreen() {
     const insets = useSafeAreaInsets();
     const [imageUri, setImageUri] = useState<string | null>(null);
+    const [reportText, setReportText] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const pickImage = async () => {
         // Request permissions
@@ -31,28 +34,66 @@ export default function UploadProofScreen() {
         }
     };
 
-    const handleUpload = () => {
-        if (!imageUri) return;
-        // In a real app we'd upload this image to a server.
-        // For MVP, we'll just mock it.
-        Alert.alert("Success", "Proof uploaded successfully!");
-        setImageUri(null); // Reset after upload
+    const handleUpload = async () => {
+        if (!imageUri && !reportText.trim()) {
+            Alert.alert('Missing details', 'Please add an image or write a report.');
+            return;
+        }
+
+        try {
+            setIsSubmitting(true);
+            await apiClient.post('/api/reports', {
+                report_text: reportText.trim(),
+                image_uri: imageUri || '',
+                submitted_by: 'mobile_client',
+                location: 'Bagumbayan Norte',
+            });
+            Alert.alert('Submitted', 'Your report was sent to admin successfully.');
+            setImageUri(null);
+            setReportText('');
+        } catch (error: any) {
+            const message = error?.response?.data?.error || 'Failed to submit report. Please try again.';
+            Alert.alert('Submission failed', message);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
         <AnimatedScreen>
             <ScrollView
                 style={styles.container}
-                contentContainerStyle={{ paddingBottom: 120, paddingTop: insets.top + 20 }}
+                contentContainerStyle={{ paddingBottom: 120 }}
             >
-                <View style={styles.header}>
+                <View style={[styles.hero, { paddingTop: insets.top + 24 }]}>
+                    <View style={styles.heroBadge}>
+                        <MaterialIcons name="verified" size={12} color={Colors.primaryPale} />
+                        <Text style={styles.heroBadgeText}>Evidence Submission</Text>
+                    </View>
                     <Text style={styles.headerTitle}>Upload Proof</Text>
                     <Text style={styles.headerDesc}>
-                        Please upload an image as proof of the reported noise activity.
+                        Submit a clear photo for reported noise activity so admins can verify and respond faster.
                     </Text>
                 </View>
 
                 <View style={styles.content}>
+                    <View style={styles.tipCard}>
+                        <MaterialIcons name="lightbulb" size={18} color={Colors.statusWarning} />
+                        <Text style={styles.tipText}>Tip: Include visible landmarks, date context, or source equipment in the photo.</Text>
+                    </View>
+
+                    <View style={styles.reportCard}>
+                        <Text style={styles.reportLabel}>Incident Summary</Text>
+                        <TextInput
+                            style={styles.reportInput}
+                            placeholder="Describe what happened, where, and when..."
+                            placeholderTextColor={Colors.textMuted}
+                            multiline
+                            value={reportText}
+                            onChangeText={setReportText}
+                        />
+                    </View>
+
                     <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
                         {imageUri ? (
                             <Image source={{ uri: imageUri }} style={styles.image} />
@@ -64,10 +105,10 @@ export default function UploadProofScreen() {
                         )}
                     </TouchableOpacity>
 
-                    {imageUri && (
-                        <TouchableOpacity style={styles.uploadButton} onPress={handleUpload} activeOpacity={0.8}>
+                    {(imageUri || reportText.trim().length > 0) && (
+                        <TouchableOpacity style={styles.uploadButton} onPress={handleUpload} activeOpacity={0.8} disabled={isSubmitting}>
                             <MaterialIcons name="cloud-upload" size={24} color={Colors.textOnDark} style={{ marginRight: 8 }} />
-                            <Text style={styles.uploadButtonText}>Upload Image</Text>
+                            <Text style={styles.uploadButtonText}>{isSubmitting ? 'Submitting...' : 'Submit Report to Admin'}</Text>
                         </TouchableOpacity>
                     )}
                 </View>
@@ -81,36 +122,112 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.bgBase,
     },
-    header: {
+    hero: {
+        backgroundColor: Colors.primaryDark,
         paddingHorizontal: 24,
-        marginBottom: 32,
+        paddingBottom: 36,
+        borderBottomLeftRadius: 30,
+        borderBottomRightRadius: 30,
+        shadowColor: Colors.shadow,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.18,
+        shadowRadius: 14,
+        elevation: 8,
+    },
+    heroBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: Colors.transparentWhite12,
+        borderRadius: 999,
+        alignSelf: 'flex-start',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        marginBottom: 14,
+    },
+    heroBadgeText: {
+        fontSize: 11,
+        color: Colors.primaryPale,
+        fontWeight: '700',
     },
     headerTitle: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        color: Colors.textPrimary,
+        fontSize: 30,
+        fontWeight: '800',
+        color: Colors.textOnDark,
         marginBottom: 8,
     },
     headerDesc: {
         fontSize: 15,
-        color: Colors.textSecondary,
+        color: Colors.textOnDarkSub,
         lineHeight: 22,
     },
     content: {
         paddingHorizontal: 24,
+        marginTop: -18,
+    },
+    tipCard: {
+        backgroundColor: Colors.bgCard,
+        borderRadius: 14,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        flexDirection: 'row',
+        gap: 10,
+        alignItems: 'center',
+        marginBottom: 14,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+    },
+    tipText: {
+        flex: 1,
+        fontSize: 12,
+        color: Colors.textSecondary,
+        lineHeight: 18,
+    },
+    reportCard: {
+        backgroundColor: Colors.bgCard,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+        padding: 12,
+        marginBottom: 12,
+    },
+    reportLabel: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: Colors.textSecondary,
+        marginBottom: 8,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    reportInput: {
+        minHeight: 88,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        fontSize: 14,
+        color: Colors.textPrimary,
+        textAlignVertical: 'top',
+        backgroundColor: Colors.bgBase,
     },
     imagePicker: {
         backgroundColor: Colors.bgCard,
-        borderRadius: 24,
-        height: 300,
+        borderRadius: 20,
+        height: 320,
         width: '100%',
         justifyContent: 'center',
         alignItems: 'center',
         overflow: 'hidden',
-        borderWidth: 2,
+        borderWidth: 1.5,
         borderColor: Colors.borderLight,
         borderStyle: 'dashed',
         marginBottom: 24,
+        shadowColor: Colors.shadow,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.06,
+        shadowRadius: 12,
+        elevation: 3,
     },
     image: {
         width: '100%',

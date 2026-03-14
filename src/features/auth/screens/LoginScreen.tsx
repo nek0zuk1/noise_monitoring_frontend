@@ -59,9 +59,14 @@ export default function LoginScreen() {
                 isAdmin: Boolean(authenticatedUser.is_admin),
             });
         } catch (error: any) {
-            const message =
-                error?.response?.data?.error ||
-                'Unable to log in. Please verify your account or check server connectivity.';
+            const statusCode = error?.response?.status;
+            const serverMessage = error?.response?.data?.error;
+            const requestBaseUrl = error?.config?.baseURL || apiClient.defaults.baseURL;
+
+            const message = serverMessage
+                || (statusCode
+                    ? `Unable to log in (${statusCode}). Please verify your username and password.`
+                    : `Unable to reach server. Check API URL: ${requestBaseUrl}`);
             Alert.alert('Login failed', message);
         }
     };
@@ -91,6 +96,7 @@ export default function LoginScreen() {
 
                     <View style={styles.formContainer}>
                         <View style={styles.form}>
+
                             <View style={styles.inputGroup}>
                                 <Text style={styles.label}>Username</Text>
                                 <View style={styles.inputContainer}>
@@ -120,10 +126,6 @@ export default function LoginScreen() {
                                     />
                                 </View>
                             </View>
-
-                            <TouchableOpacity style={styles.forgotPassword}>
-                                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                            </TouchableOpacity>
 
                             <TouchableOpacity
                                 style={[
@@ -201,6 +203,19 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.08,
         shadowRadius: 20,
         elevation: 8,
+    },
+    formHeader: {
+        marginBottom: 12,
+    },
+    formTitle: {
+        fontSize: 18,
+        color: Colors.textPrimary,
+        fontWeight: '800',
+    },
+    formSub: {
+        marginTop: 4,
+        fontSize: 12,
+        color: Colors.textSecondary,
     },
     inputGroup: {
         marginBottom: 20,

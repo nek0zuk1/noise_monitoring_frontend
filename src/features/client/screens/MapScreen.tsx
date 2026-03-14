@@ -196,6 +196,11 @@ export default function MapScreen() {
                         ))}
                     </View>
 
+                    <View style={styles.bottomInfoCard}>
+                        <Text style={styles.bottomInfoTitle}>Coverage Area</Text>
+                        <Text style={styles.bottomInfoSub}>Map is locked to Bagumbayan Norte for focused monitoring and incident triage.</Text>
+                    </View>
+
                 </Animated.View>
             </View>
         </AnimatedScreen >
@@ -259,4 +264,33 @@ const styles = StyleSheet.create({
     },
     legendLabel: { fontSize: 11, fontWeight: '700', color: Colors.textPrimary },
     legendSub: { fontSize: 9, fontWeight: '500', color: Colors.textSecondary },
+
+    bottomInfoCard: {
+        position: 'absolute',
+        left: 12,
+        right: 12,
+        bottom: 18,
+        backgroundColor: withAlpha(Colors.bgCard, 0.96),
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        shadowColor: Colors.shadow,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+        elevation: 4,
+    },
+    bottomInfoTitle: {
+        fontSize: 12,
+        fontWeight: '800',
+        color: Colors.textPrimary,
+        marginBottom: 4,
+    },
+    bottomInfoSub: {
+        fontSize: 11,
+        lineHeight: 16,
+        color: Colors.textSecondary,
+    },
 });

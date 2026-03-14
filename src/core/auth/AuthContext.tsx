@@ -35,6 +35,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Bootstrap the app by checking for an existing JWT token
         const bootstrapAsync = async () => {
             try {
+                // Mobile policy: always start from login screen on fresh app launch.
+                if (Platform.OS !== 'web') {
+                    await AsyncStorage.removeItem('@jwt_token');
+                    await AsyncStorage.removeItem('@auth_user');
+                    setUser(null);
+                    return;
+                }
+
                 // Safely load token depending on platform
                 let storedToken = null;
                 if (Platform.OS === 'web') {

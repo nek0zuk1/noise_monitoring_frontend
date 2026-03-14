@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
     ScrollView,
     StyleSheet,
@@ -12,8 +12,26 @@ import { AuthContext } from '../../../core/auth/AuthContext';
 import AdminUsers from '../components/AdminUsers';
 import AdminAnalytics from '../components/AdminAnalytics';
 import { MaterialIcons } from '@expo/vector-icons';
+import { apiClient } from '../../../core/api/apiClient';
 
 type AdminTab = 'Dashboard' | 'Users' | 'Reports';
+
+type NoiseBucket = {
+    label: string;
+    avg_decibels: number;
+    count: number;
+};
+
+type NoisePayload = {
+    average_decibels: number;
+    total_readings: number;
+    noise_summary: {
+        Normal: number;
+        Elevated: number;
+        High: number;
+    };
+    graph: NoiseBucket[];
+};
 
 const NAV_ITEMS: { key: AdminTab; icon: keyof typeof MaterialIcons.glyphMap }[] = [
     { key: 'Dashboard', icon: 'dashboard' },
@@ -37,6 +55,52 @@ export default function AdminDashboard() {
         []
     );
 
+    const [isSummaryLoading, setIsSummaryLoading] = useState(true);
+    const [reportSummary, setReportSummary] = useState({ total_reports: 0, pending_reports: 0, reports_today: 0 });
+    const [recentReports, setRecentReports] = useState<Array<{ report_text?: string; created_at?: string; status?: string }>>([]);
+    const [noise24h, setNoise24h] = useState<NoisePayload>({
+        average_decibels: 0,
+        total_readings: 0,
+        noise_summary: { Normal: 0, Elevated: 0, High: 0 },
+        graph: [],
+    });
+    const [noise7d, setNoise7d] = useState<NoisePayload>({
+        average_decibels: 0,
+        total_readings: 0,
+        noise_summary: { Normal: 0, Elevated: 0, High: 0 },
+        graph: [],
+    });
+
+    useEffect(() => {
+        const fetchDashboardSummary = async () => {
+            try {
+                const [reportsRes, noise24Res, noise7Res] = await Promise.all([
+                    apiClient.get('/api/admin/reports/summary'),
+                    apiClient.get('/api/admin/noise-summary?window=24h'),
+                    apiClient.get('/api/admin/noise-summary?window=7d'),
+                ]);
+
+                setReportSummary(reportsRes.data?.summary || { total_reports: 0, pending_reports: 0, reports_today: 0 });
+                setRecentReports(reportsRes.data?.recent_reports || []);
+                setNoise24h(noise24Res.data || noise24h);
+                setNoise7d(noise7Res.data || noise7d);
+            } catch {
+                // Keep default values when backend is unavailable.
+            } finally {
+                setIsSummaryLoading(false);
+            }
+        };
+
+        if (activeTab === 'Dashboard') {
+            void fetchDashboardSummary();
+        }
+    }, [activeTab]);
+
+    const maxNoiseBucket = useMemo(
+        () => Math.max(...noise24h.graph.map((item) => item.avg_decibels), 1),
+        [noise24h.graph]
+    );
+
     const renderContent = () => {
         switch (activeTab) {
             case 'Users':
@@ -50,37 +114,90 @@ export default function AdminDashboard() {
                         <View style={styles.heroCard}>
                             <Text style={styles.heroTitle}>Welcome to the Admin Portal</Text>
                             <Text style={styles.heroSubtitle}>
-                                Monitor operational status, manage accounts, and review reports from one command center.
+                                Monitor noise status, review client submissions, and make quick decisions from one page.
                             </Text>
                         </View>
 
                         <View style={styles.kpiRow}>
                             <View style={styles.kpiCard}>
-                                <Text style={styles.kpiLabel}>Active Sensors</Text>
-                                <Text style={styles.kpiValue}>12</Text>
+                                <Text style={styles.kpiLabel}>Reports Today</Text>
+                                <Text style={styles.kpiValue}>{reportSummary.reports_today}</Text>
                             </View>
                             <View style={styles.kpiCard}>
-                                <Text style={styles.kpiLabel}>Open Incidents</Text>
-                                <Text style={[styles.kpiValue, { color: Colors.statusWarning }]}>8</Text>
+                                <Text style={styles.kpiLabel}>Pending Review</Text>
+                                <Text style={[styles.kpiValue, { color: Colors.statusWarning }]}>{reportSummary.pending_reports}</Text>
                             </View>
                             <View style={styles.kpiCard}>
-                                <Text style={styles.kpiLabel}>Filed Reports</Text>
-                                <Text style={styles.kpiValue}>45</Text>
+                                <Text style={styles.kpiLabel}>24h Avg Decibels</Text>
+                                <Text style={styles.kpiValue}>{noise24h.average_decibels.toFixed(1)} dB</Text>
+                            </View>
+                            <View style={styles.kpiCard}>
+                                <Text style={styles.kpiLabel}>7d Avg Decibels</Text>
+                                <Text style={styles.kpiValue}>{noise7d.average_decibels.toFixed(1)} dB</Text>
                             </View>
                         </View>
 
-                        <View style={styles.quickActionsCard}>
-                            <Text style={styles.sectionTitle}>Quick Actions</Text>
-                            <View style={styles.quickActionsRow}>
-                                <TouchableOpacity style={styles.quickButton} onPress={() => setActiveTab('Users')}>
-                                    <MaterialIcons name="person-add" size={18} color={Colors.primaryDark} />
-                                    <Text style={styles.quickButtonText}>Create User</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={styles.quickButton} onPress={() => setActiveTab('Reports')}>
-                                    <MaterialIcons name="summarize" size={18} color={Colors.primaryDark} />
-                                    <Text style={styles.quickButtonText}>View Reports</Text>
-                                </TouchableOpacity>
-                            </View>
+                        <View style={styles.summaryCard}>
+                            <Text style={styles.sectionTitle}>Noise Summary (Last 24 Hours)</Text>
+                            <Text style={styles.summaryMeta}>
+                                Normal: {noise24h.noise_summary.Normal} | Elevated: {noise24h.noise_summary.Elevated} | High: {noise24h.noise_summary.High}
+                            </Text>
+                            {isSummaryLoading ? (
+                                <Text style={styles.loadingText}>Loading summary...</Text>
+                            ) : (
+                                <View style={styles.noiseBarsRow}>
+                                    {noise24h.graph.slice(-8).map((bucket, index) => (
+                                        <View key={`${bucket.label}-${index}`} style={styles.noiseBarCol}>
+                                            <View
+                                                style={[
+                                                    styles.noiseBar,
+                                                    {
+                                                        height: Math.max(6, (bucket.avg_decibels / maxNoiseBucket) * 70),
+                                                        backgroundColor:
+                                                            bucket.avg_decibels >= 70
+                                                                ? Colors.noiseCritical
+                                                                : bucket.avg_decibels >= 55
+                                                                    ? Colors.noiseElevated
+                                                                    : Colors.noiseNormal,
+                                                    },
+                                                ]}
+                                            />
+                                            <Text style={styles.noiseBarLabel}>{bucket.label}</Text>
+                                        </View>
+                                    ))}
+                                </View>
+                            )}
+                        </View>
+
+                        <View style={styles.summaryCard}>
+                            <Text style={styles.sectionTitle}>Recent Client Reports</Text>
+                            {recentReports.length === 0 ? (
+                                <Text style={styles.loadingText}>No submitted reports yet.</Text>
+                            ) : (
+                                recentReports.slice(0, 4).map((report, index) => (
+                                    <View key={`${report.created_at || 'item'}-${index}`} style={styles.reportRow}>
+                                        <View
+                                            style={[
+                                                styles.reportDot,
+                                                {
+                                                    backgroundColor:
+                                                        report.status === 'pending'
+                                                            ? Colors.statusWarning
+                                                            : Colors.noiseNormal,
+                                                },
+                                            ]}
+                                        />
+                                        <View style={styles.reportBody}>
+                                            <Text style={styles.reportTimeLabel}>
+                                                {report.created_at ? new Date(report.created_at).toLocaleString() : 'Unknown time'}
+                                            </Text>
+                                            <Text style={styles.reportText} numberOfLines={2}>
+                                                {report.report_text || 'Image-only report submission'}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                ))
+                            )}
                         </View>
                     </ScrollView>
                 );
@@ -101,7 +218,7 @@ export default function AdminDashboard() {
                         <TouchableOpacity
                             key={item.key}
                             onPress={() => setActiveTab(item.key)}
-                            style={[styles.navItem, isActive && styles.navItemActive]}
+                            style={[styles.navItem, isCompact && styles.navItemCompact, isActive && styles.navItemActive]}
                         >
                             <MaterialIcons
                                 name={item.icon}
@@ -124,7 +241,7 @@ export default function AdminDashboard() {
     return (
         <View style={[styles.container, isCompact && styles.containerCompact]}>
             {renderNav()}
-            <View style={styles.content}>
+            <View style={[styles.content, isCompact && styles.contentCompact]}>
                 <View style={styles.topBar}>
                     <View>
                         <Text style={styles.topBarTitle}>{activeTab}</Text>
@@ -133,7 +250,7 @@ export default function AdminDashboard() {
                     <Text style={styles.dateText}>{dateLabel}</Text>
                 </View>
 
-                <View style={styles.contentCard}>
+                <View style={[styles.contentCard, isCompact && styles.contentCardCompact]}>
                     {renderContent()}
                 </View>
             </View>
@@ -162,6 +279,7 @@ const styles = StyleSheet.create({
         borderRightWidth: 0,
         borderBottomWidth: 1,
         borderBottomColor: Colors.transparentWhite12,
+        paddingBottom: 14,
     },
     logo: {
         fontSize: 20,
@@ -182,7 +300,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         marginTop: 16,
         flexWrap: 'wrap',
-        gap: 8,
+        gap: 10,
         flex: 0,
     },
     navItem: {
@@ -193,6 +311,10 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         paddingHorizontal: 12,
         backgroundColor: Colors.transparent,
+    },
+    navItemCompact: {
+        borderWidth: 1,
+        borderColor: Colors.transparentWhite22,
     },
     navItemActive: {
         backgroundColor: Colors.transparentWhite16,
@@ -209,6 +331,9 @@ const styles = StyleSheet.create({
         flex: 1,
         padding: 24,
         backgroundColor: Colors.bgBase,
+    },
+    contentCompact: {
+        padding: 14,
     },
     topBar: {
         marginBottom: 16,
@@ -241,6 +366,9 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.06,
         shadowRadius: 10,
         elevation: 2,
+    },
+    contentCardCompact: {
+        padding: 14,
     },
     homeContentWrap: {
         gap: 16,
@@ -286,38 +414,74 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: Colors.primaryDark,
     },
-    quickActionsCard: {
-        borderWidth: 1,
-        borderColor: Colors.borderLight,
-        borderRadius: 12,
-        padding: 14,
-    },
     sectionTitle: {
         fontSize: 15,
         fontWeight: '700',
         color: Colors.textPrimary,
         marginBottom: 10,
     },
-    quickActionsRow: {
-        flexDirection: 'row',
-        gap: 10,
-        flexWrap: 'wrap',
-    },
-    quickButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: Colors.bgMuted,
+    summaryCard: {
+        backgroundColor: Colors.bgCard,
         borderWidth: 1,
         borderColor: Colors.borderLight,
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
+        borderRadius: 12,
+        padding: 14,
     },
-    quickButtonText: {
+    summaryMeta: {
+        marginTop: 6,
+        marginBottom: 8,
         fontSize: 13,
-        color: Colors.primaryDark,
-        fontWeight: '600',
+        color: Colors.textSecondary,
+    },
+    loadingText: {
+        fontSize: 13,
+        color: Colors.textMuted,
+    },
+    noiseBarsRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        gap: 8,
+        marginTop: 8,
+    },
+    noiseBarCol: {
+        alignItems: 'center',
+        width: 24,
+    },
+    noiseBar: {
+        width: 14,
+        borderTopLeftRadius: 4,
+        borderTopRightRadius: 4,
+    },
+    noiseBarLabel: {
+        marginTop: 4,
+        fontSize: 10,
+        color: Colors.textMuted,
+    },
+    reportRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 8,
+        paddingVertical: 8,
+        borderTopWidth: 1,
+        borderTopColor: Colors.borderLight,
+    },
+    reportDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 999,
+        marginTop: 6,
+    },
+    reportBody: {
+        flex: 1,
+    },
+    reportTimeLabel: {
+        fontSize: 12,
+        color: Colors.textMuted,
+        marginBottom: 4,
+    },
+    reportText: {
+        fontSize: 14,
+        color: Colors.textPrimary,
     },
     logoutButton: {
         marginTop: 18,

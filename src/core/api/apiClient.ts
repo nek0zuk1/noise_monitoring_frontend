@@ -1,6 +1,8 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
+
+const isDev = typeof __DEV__ !== 'undefined' && __DEV__;
 
 const resolveWebApiBaseUrl = (): string => {
     if (typeof window === 'undefined') {
@@ -11,19 +13,77 @@ const resolveWebApiBaseUrl = (): string => {
     return `${protocol}//${hostname}:5000`;
 };
 
-const API_BASE_URL =
-    process.env.EXPO_PUBLIC_API_BASE_URL ||
-    (Platform.OS === 'web' ? resolveWebApiBaseUrl() : 'https://api.bagumbayan-noise.com/v1');
-
-const getWebFallbackBaseUrls = (): string[] => {
-    if (Platform.OS !== 'web') {
-        return [];
+const getDevHostFromBundleUrl = (): string | null => {
+    const scriptURL = NativeModules?.SourceCode?.scriptURL as string | undefined;
+    if (!scriptURL) {
+        return null;
     }
 
+    try {
+        const parsed = new URL(scriptURL);
+        const host = parsed.hostname;
+        if (!host || host === 'localhost' || host === '127.0.0.1') {
+            return null;
+        }
+        return host;
+    } catch {
+        return null;
+    }
+};
+
+const getNativeDevBaseUrl = (): string => {
+    const devHost = getDevHostFromBundleUrl();
+    if (devHost) {
+        return `http://${devHost}:5000`;
+    }
+
+    if (Platform.OS === 'android') {
+        // Android emulator maps host loopback to 10.0.2.2.
+        return 'http://10.0.2.2:5000';
+    }
+
+    return 'http://127.0.0.1:5000';
+};
+
+const NATIVE_PROD_BASE_URL = 'https://api.bagumbayan-noise.com/v1';
+
+const API_BASE_URL =
+    process.env.EXPO_PUBLIC_API_BASE_URL ||
+    (Platform.OS === 'web'
+        ? resolveWebApiBaseUrl()
+        : isDev
+            ? getNativeDevBaseUrl()
+            : NATIVE_PROD_BASE_URL);
+
+const getFallbackBaseUrls = (): string[] => {
     const urls = new Set<string>();
-    urls.add(resolveWebApiBaseUrl());
-    urls.add('http://localhost:5000');
-    urls.add('http://127.0.0.1:5000');
+
+    const envFallbacks = (process.env.EXPO_PUBLIC_API_FALLBACK_URLS || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+    for (const url of envFallbacks) {
+        urls.add(url);
+    }
+
+    if (Platform.OS === 'web') {
+        urls.add(resolveWebApiBaseUrl());
+        urls.add('http://localhost:5000');
+        urls.add('http://127.0.0.1:5000');
+        return Array.from(urls);
+    }
+
+    if (isDev) {
+        const devHost = getDevHostFromBundleUrl();
+        if (devHost) {
+            urls.add(`http://${devHost}:5000`);
+        }
+        urls.add(getNativeDevBaseUrl());
+        urls.add('http://localhost:5000');
+        urls.add('http://127.0.0.1:5000');
+    }
+
     return Array.from(urls);
 };
 
@@ -63,14 +123,13 @@ apiClient.interceptors.response.use(
     async (error) => {
         const originalRequest = error?.config;
 
-        // Retry once with alternate local base URL when running on web and request fails to reach server.
+        // Retry once with alternate base URL when request fails to reach server.
         if (
-            Platform.OS === 'web' &&
             originalRequest &&
             !error?.response &&
             !originalRequest.__retriedWithFallback
         ) {
-            const candidates = getWebFallbackBaseUrls();
+            const candidates = getFallbackBaseUrls();
             const currentBase = originalRequest.baseURL || API_BASE_URL;
             const nextBase = candidates.find((url) => url !== currentBase);
 

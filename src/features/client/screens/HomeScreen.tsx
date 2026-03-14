@@ -87,6 +87,19 @@ export default function HomeScreen() {
                     </Animated.View>
                 </View>
 
+                <View style={styles.summaryRow}>
+                    <View style={styles.summaryCard}>
+                        <MaterialIcons name="sensors" size={16} color={Colors.primaryDark} />
+                        <Text style={styles.summaryLabel}>Sensors</Text>
+                        <Text style={styles.summaryValue}>12 Active</Text>
+                    </View>
+                    <View style={styles.summaryCard}>
+                        <MaterialIcons name="graphic-eq" size={16} color={Colors.statusWarning} />
+                        <Text style={styles.summaryLabel}>Avg Noise</Text>
+                        <Text style={styles.summaryValue}>55 dB</Text>
+                    </View>
+                </View>
+
                 {/* ── Feature Cards ── */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Features</Text>
@@ -174,6 +187,39 @@ const styles = StyleSheet.create({
     featureText: { flex: 1 },
     featureTitle: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary, marginBottom: 4 },
     featureDesc: { fontSize: 13, color: Colors.textSecondary, lineHeight: 19 },
+
+    summaryRow: {
+        marginTop: -18,
+        paddingHorizontal: 20,
+        flexDirection: 'row',
+        gap: 10,
+    },
+    summaryCard: {
+        flex: 1,
+        backgroundColor: Colors.bgCard,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        shadowColor: Colors.shadow,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+        elevation: 3,
+    },
+    summaryLabel: {
+        marginTop: 5,
+        fontSize: 11,
+        color: Colors.textMuted,
+        fontWeight: '600',
+    },
+    summaryValue: {
+        marginTop: 3,
+        fontSize: 15,
+        color: Colors.textPrimary,
+        fontWeight: '800',
+    },
 
     // Logout
     logoutSection: {

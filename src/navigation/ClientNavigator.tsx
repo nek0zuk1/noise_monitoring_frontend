@@ -4,30 +4,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../core/theme/Colors';
 
-import HomeScreen from '../features/client/screens/HomeScreen';
 import DashboardScreen from '../features/client/screens/DashboardScreen';
 import MapScreen from '../features/client/screens/MapScreen';
 import UploadProofScreen from '../features/client/screens/UploadProofScreen';
-import AboutScreen from '../features/client/screens/AboutScreen';
 
 const Tab = createBottomTabNavigator();
 
 type IconName = React.ComponentProps<typeof MaterialIcons>['name'];
 
 const TABS: { name: string; icon: IconName; label: string; hideTabBar?: boolean }[] = [
-    { name: 'Home', icon: 'home', label: 'Home', hideTabBar: true },
     { name: 'Dashboard', icon: 'sensors', label: 'Monitor' },
     { name: 'Map', icon: 'map', label: 'Map' },
-    { name: 'UploadProof', icon: 'add-a-photo', label: 'Upload Proof' },
-    { name: 'About', icon: 'info', label: 'About' },
+    { name: 'UploadProof', icon: 'assignment', label: 'Report' },
 ];
 
 const SCREENS: Record<string, React.ComponentType<any>> = {
-    Home: HomeScreen,
     Dashboard: DashboardScreen,
     Map: MapScreen,
     UploadProof: UploadProofScreen,
-    About: AboutScreen,
 };
 
 export function ClientNavigator() {
@@ -38,16 +32,23 @@ export function ClientNavigator() {
             screenOptions={({ route }) => ({
                 headerShown: false,
                 tabBarStyle: {
+                    height: 60 + Math.max(insets.bottom, 0),
+                    paddingBottom: Math.max(insets.bottom, 6),
+                    paddingTop: 6,
                     borderTopWidth: 1,
                     borderTopColor: Colors.borderMuted,
+                    borderRadius: 0,
                     backgroundColor: Colors.tabBar,
                 },
                 tabBarActiveTintColor: Colors.tabActive,
                 tabBarInactiveTintColor: Colors.tabInactive,
                 tabBarLabelStyle: {
                     fontSize: 11,
-                    fontWeight: '600',
-                    marginTop: -4,
+                    fontWeight: '700',
+                    marginTop: -2,
+                },
+                tabBarItemStyle: {
+                    paddingVertical: 6,
                 },
                 tabBarIcon: ({ color, size, focused }) => {
                     const tab = TABS.find((t) => t.name === route.name);

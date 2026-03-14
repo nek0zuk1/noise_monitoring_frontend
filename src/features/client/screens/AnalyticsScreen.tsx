@@ -6,6 +6,7 @@ import {
     ScrollView,
     Animated,
     Dimensions,
+    TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -74,17 +75,18 @@ export default function AnalyticsScreen() {
                     {/* ── Tab Selector ── */}
                     <View style={styles.tabRow}>
                         {(['24h', '7d', '30d'] as const).map((t) => (
-                            <View
+                            <TouchableOpacity
                                 key={t}
                                 style={[styles.tabBtn, activeTab === t && styles.tabBtnActive]}
+                                onPress={() => setActiveTab(t)}
+                                activeOpacity={0.85}
                             >
                                 <Text
                                     style={[styles.tabLabel, activeTab === t && styles.tabLabelActive]}
-                                    onPress={() => setActiveTab(t)}
                                 >
                                     {t === '24h' ? 'Last 24h' : t === '7d' ? '7 Days' : '30 Days'}
                                 </Text>
-                            </View>
+                            </TouchableOpacity>
                         ))}
                     </View>
 
