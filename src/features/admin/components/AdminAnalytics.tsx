@@ -79,7 +79,6 @@ export default function AdminAnalytics() {
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
             <View style={styles.headerCard}>
-                <Text style={styles.sectionLabel}>Deep Dive</Text>
                 <Text style={styles.title}>Reports and Trends</Text>
                 <Text style={styles.subtitle}>
                     Detailed view for report queue handling and noise-trend analysis.

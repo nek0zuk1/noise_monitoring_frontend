@@ -196,11 +196,6 @@ export default function MapScreen() {
                         ))}
                     </View>
 
-                    <View style={styles.bottomInfoCard}>
-                        <Text style={styles.bottomInfoTitle}>Coverage Area</Text>
-                        <Text style={styles.bottomInfoSub}>Map is locked to Bagumbayan Norte for focused monitoring and incident triage.</Text>
-                    </View>
-
                 </Animated.View>
             </View>
         </AnimatedScreen >
