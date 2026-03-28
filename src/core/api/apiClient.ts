@@ -4,6 +4,7 @@ import { NativeModules, Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 const isDev = typeof __DEV__ !== 'undefined' && __DEV__;
+const DEFAULT_API_BASE_URL = 'https://noise-monitoring-backend.onrender.com';
 
 const DEV_API_PORT = '5000';
 
@@ -80,18 +81,11 @@ const getNativeDevBaseUrl = (): string => {
     return `http://localhost:${DEV_API_PORT}`;
 };
 
-const NATIVE_PROD_BASE_URL = 'https://api.bagumbayan-noise.com/v1';
-
-const API_BASE_URL =
-    process.env.EXPO_PUBLIC_API_BASE_URL ||
-    (Platform.OS === 'web'
-        ? resolveWebApiBaseUrl()
-        : isDev
-            ? getNativeDevBaseUrl()
-            : NATIVE_PROD_BASE_URL);
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
 
 const getFallbackBaseUrls = (): string[] => {
     const urls = new Set<string>();
+    urls.add(DEFAULT_API_BASE_URL);
 
     const configuredHost = process.env.EXPO_PUBLIC_DEV_API_HOST?.trim();
     if (configuredHost) {
