@@ -152,6 +152,10 @@ export default function LoginScreen() {
                                 </View>
                             )}
                         </TouchableOpacity>
+
+                        <Text style={webStyles.footerNote}>
+                            Contact your administrator to create an account.
+                        </Text>
                     </Animated.View>
                 </View>
             </View>
@@ -416,7 +420,7 @@ const mobileStyles = StyleSheet.create({
         borderRadius: 18,
         marginBottom: 22,
     },
-    heroBadgeText: { fontSize: 11, color: Colors.primaryPale, fontWeight: '600' },
+    heroBadgeText: { fontSize: 10, color: Colors.primaryPale, fontWeight: '600' },
     heroTitle: {
         fontSize: 40,
         fontWeight: '800',
@@ -458,8 +462,8 @@ const mobileStyles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '700',
         color: Colors.textSecondary,
-        marginBottom: 8,
-        marginLeft: 4,
+        marginBottom: 6,
+        marginLeft: 2,
     },
     inputContainer: {
         flexDirection: 'row',
@@ -504,7 +508,7 @@ const mobileStyles = StyleSheet.create({
         color: Colors.textOnDark,
     },
     footerText: {
-        fontSize: 14,
+        fontSize: 13,
         color: Colors.textSecondary,
         textAlign: 'left',
         marginTop: 30,
