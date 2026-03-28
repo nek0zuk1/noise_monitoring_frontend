@@ -14,24 +14,99 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, getNoiseLevelColor, getNoiseLevelLabel } from '../../../core/theme/Colors';
 import AnimatedScreen from '../../../components/AnimatedScreen';
 import { AuthContext } from '../../../core/auth/AuthContext';
+import { apiClient } from '../../../core/api/apiClient';
 
 type SensorData = {
     id: string;
     name: string;
     status: 'active' | 'inactive' | 'maintenance';
     noiseLevel: number;
+    decibels: number;
+    classLabel: string;
+    confidence: number;
+    indicator: string;
     location: string;
-    battery: number;
-    signal: number;
     lastUpdate: string;
 };
 
 const INITIAL_SENSORS: SensorData[] = [
-    { id: '1', name: 'Main Street Sensor', status: 'active', noiseLevel: 45, location: 'Main Street, Naga City', battery: 85, signal: 90, lastUpdate: 'Live' },
-    { id: '2', name: 'City Center Sensor', status: 'maintenance', noiseLevel: 60, location: 'City Center, Naga City', battery: 45, signal: 75, lastUpdate: '5m ago' },
-    { id: '3', name: 'Park Area Sensor', status: 'active', noiseLevel: 35, location: 'Central Park, Naga City', battery: 95, signal: 85, lastUpdate: 'Live' },
-    { id: '4', name: 'Mall Zone Sensor', status: 'inactive', noiseLevel: 0, location: 'SM City Naga', battery: 20, signal: 60, lastUpdate: '10m ago' },
+    {
+        id: '1',
+        name: 'Main Street Sensor',
+        status: 'active',
+        noiseLevel: 45,
+        decibels: 45,
+        classLabel: 'Normal_Conversation',
+        confidence: 94.2,
+        indicator: 'Normal',
+        location: 'Main Street, Naga City',
+        lastUpdate: 'Live',
+    },
+    {
+        id: '2',
+        name: 'City Center Sensor',
+        status: 'maintenance',
+        noiseLevel: 60,
+        decibels: 60,
+        classLabel: 'Vehicle',
+        confidence: 88.7,
+        indicator: 'Elevated',
+        location: 'City Center, Naga City',
+        lastUpdate: '5m ago',
+    },
+    {
+        id: '3',
+        name: 'Park Area Sensor',
+        status: 'active',
+        noiseLevel: 35,
+        decibels: 35,
+        classLabel: 'Birds',
+        confidence: 91.5,
+        indicator: 'Normal',
+        location: 'Central Park, Naga City',
+        lastUpdate: 'Live',
+    },
+    {
+        id: '4',
+        name: 'Mall Zone Sensor',
+        status: 'inactive',
+        noiseLevel: 0,
+        decibels: 0,
+        classLabel: 'Unknown',
+        confidence: 0,
+        indicator: 'No Data',
+        location: 'SM City Naga',
+        lastUpdate: '10m ago',
+    },
 ];
+
+const normalizeLastUpdate = (value: unknown): string => {
+    if (typeof value !== 'string' || !value.trim()) {
+        return 'N/A';
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return value;
+    }
+
+    return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const normalizeSensor = (sensor: Record<string, unknown>): SensorData => ({
+    id: String(sensor.id ?? ''),
+    name: String(sensor.name ?? 'Unnamed Sensor'),
+    status: (['active', 'inactive', 'maintenance'].includes(String(sensor.status))
+        ? String(sensor.status)
+        : 'inactive') as SensorData['status'],
+    noiseLevel: Number(sensor.noiseLevel ?? 0),
+    decibels: Number(sensor.decibels ?? sensor.noiseLevel ?? 0),
+    classLabel: String(sensor.class ?? 'Unknown'),
+    confidence: Number(sensor.confidence ?? 0),
+    indicator: String(sensor.indicator ?? 'Unknown'),
+    location: String(sensor.location ?? 'Unknown location'),
+    lastUpdate: normalizeLastUpdate(sensor.lastUpdate),
+});
 
 const STATUS_COLORS: Record<string, string> = {
     active: Colors.statusActive,
@@ -42,7 +117,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function DashboardScreen() {
     const { logout } = useContext(AuthContext);
     const insets = useSafeAreaInsets();
-    const [sensors] = useState<SensorData[]>(INITIAL_SENSORS);
+    const [sensors, setSensors] = useState<SensorData[]>(INITIAL_SENSORS);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [avgDb, setAvgDb] = useState(45);
     const [systemLevel, setSystemLevel] = useState<'Normal' | 'Elevated' | 'Critical'>('Normal');
@@ -62,6 +137,36 @@ export default function DashboardScreen() {
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const fetchSensors = async () => {
+            try {
+                const response = await apiClient.get('/api/sensors');
+                const apiSensors = (response.data?.sensors ?? []) as Array<Record<string, unknown>>;
+                const normalized = apiSensors
+                    .filter((sensor) => sensor && sensor.id)
+                    .map(normalizeSensor);
+
+                if (!cancelled && normalized.length > 0) {
+                    setSensors(normalized);
+                }
+            } catch (error) {
+                console.warn('Unable to fetch sensors', error);
+            }
+        };
+
+        void fetchSensors();
+        const interval = setInterval(() => {
+            void fetchSensors();
+        }, 5000);
+
+        return () => {
+            cancelled = true;
+            clearInterval(interval);
+        };
     }, []);
 
     useEffect(() => {
@@ -245,11 +350,37 @@ export default function DashboardScreen() {
                                         </View>
                                     </View>
 
+                                    <View style={styles.classificationRow}>
+                                        <MaterialIcons name="graphic-eq" size={13} color={Colors.textMuted} />
+                                        <Text style={styles.classificationText}>
+                                            Class: {item.classLabel}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.classificationRow}>
+                                        <MaterialIcons name="check-circle" size={13} color={Colors.textMuted} />
+                                        <Text style={styles.classificationText}>
+                                            Confidence: {item.confidence > 0 ? `${item.confidence.toFixed(1)}%` : 'N/A'}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.classificationRow}>
+                                        <MaterialIcons name="volume-up" size={13} color={Colors.textMuted} />
+                                        <Text style={styles.classificationText}>
+                                            Decibel: {item.status === 'active' ? `${item.decibels.toFixed(1)} dB` : 'N/A'}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.classificationRow}>
+                                        <MaterialIcons name="insights" size={13} color={Colors.textMuted} />
+                                        <Text style={styles.classificationText}>
+                                            Indicator: {item.indicator}
+                                        </Text>
+                                    </View>
+
                                     <View style={styles.cardFooter}>
-                                        <MaterialIcons name="battery-full" size={13} color={Colors.textMuted} />
-                                        <Text style={styles.metaText}>{item.battery}%</Text>
-                                        <MaterialIcons name="signal-cellular-alt" size={13} color={Colors.textMuted} style={{ marginLeft: 10 }} />
-                                        <Text style={styles.metaText}>{item.signal}%</Text>
+                                        <MaterialIcons name="schedule" size={13} color={Colors.textMuted} />
+                                        <Text style={styles.metaText}>Last update</Text>
                                         <Text style={styles.updateTime}>{item.lastUpdate}</Text>
                                     </View>
                                 </View>
@@ -395,6 +526,18 @@ const styles = StyleSheet.create({
     noiseBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, alignItems: 'center', minWidth: 62 },
     noiseValue: { fontWeight: '800', fontSize: 14 },
     noiseLabel: { fontSize: 10, fontWeight: '600', marginTop: 1 },
+
+    classificationRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+        gap: 6,
+    },
+    classificationText: {
+        fontSize: 12,
+        color: Colors.textSecondary,
+        fontWeight: '600',
+    },
 
     cardFooter: {
         flexDirection: 'row', alignItems: 'center',

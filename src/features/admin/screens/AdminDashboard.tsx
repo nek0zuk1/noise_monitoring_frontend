@@ -11,10 +11,11 @@ import { Colors } from '../../../core/theme/Colors';
 import { AuthContext } from '../../../core/auth/AuthContext';
 import AdminUsers from '../components/AdminUsers';
 import AdminAnalytics from '../components/AdminAnalytics';
+import AdminHandover from '../components/AdminHandover';
 import { MaterialIcons } from '@expo/vector-icons';
 import { apiClient } from '../../../core/api/apiClient';
 
-type AdminTab = 'Dashboard' | 'Users' | 'Reports';
+type AdminTab = 'Dashboard' | 'Users' | 'Reports' | 'Handover';
 
 type NoiseBucket = {
     label: string;
@@ -33,15 +34,23 @@ type NoisePayload = {
     graph: NoiseBucket[];
 };
 
-const NAV_ITEMS: { key: AdminTab; icon: keyof typeof MaterialIcons.glyphMap }[] = [
-    { key: 'Dashboard', icon: 'dashboard' },
-    { key: 'Users', icon: 'people' },
-    { key: 'Reports', icon: 'assessment' },
+const NAV_ITEMS: { key: AdminTab; icon: keyof typeof MaterialIcons.glyphMap; label: string }[] = [
+    { key: 'Dashboard', icon: 'dashboard', label: 'Dashboard' },
+    { key: 'Users', icon: 'people', label: 'User Management' },
+    { key: 'Reports', icon: 'assessment', label: 'Reports' },
+    { key: 'Handover', icon: 'swap-horiz', label: 'Admin Handover' },
 ];
+
+const TAB_META: Record<AdminTab, { title: string; description: string }> = {
+    Dashboard: { title: 'Dashboard', description: 'System overview and recent activity' },
+    Users: { title: 'User Management', description: 'Create and manage client accounts' },
+    Reports: { title: 'Reports & Analytics', description: 'Noise trends and report queue' },
+    Handover: { title: 'Admin Account Handover', description: 'Transfer admin credentials to the next holder' },
+};
 
 export default function AdminDashboard() {
     const [activeTab, setActiveTab] = useState<AdminTab>('Dashboard');
-    const { logout } = useContext(AuthContext);
+    const { logout, user } = useContext(AuthContext);
     const { width } = useWindowDimensions();
     const isCompact = width < 980;
     const dateLabel = useMemo(
@@ -72,6 +81,7 @@ export default function AdminDashboard() {
     });
 
     useEffect(() => {
+        if (activeTab !== 'Dashboard') return;
         const fetchDashboardSummary = async () => {
             try {
                 const [reportsRes, noise24Res, noise7Res] = await Promise.all([
@@ -79,7 +89,6 @@ export default function AdminDashboard() {
                     apiClient.get('/api/admin/noise-summary?window=24h'),
                     apiClient.get('/api/admin/noise-summary?window=7d'),
                 ]);
-
                 setReportSummary(reportsRes.data?.summary || { total_reports: 0, pending_reports: 0, reports_today: 0 });
                 setRecentReports(reportsRes.data?.recent_reports || []);
                 setNoise24h(noise24Res.data || noise24h);
@@ -90,10 +99,7 @@ export default function AdminDashboard() {
                 setIsSummaryLoading(false);
             }
         };
-
-        if (activeTab === 'Dashboard') {
-            void fetchDashboardSummary();
-        }
+        void fetchDashboardSummary();
     }, [activeTab]);
 
     const maxNoiseBucket = useMemo(
@@ -101,156 +107,216 @@ export default function AdminDashboard() {
         [noise24h.graph]
     );
 
+    const renderDashboard = () => (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.homeContentWrap}>
+            <View style={styles.heroCard}>
+                <View style={styles.heroCardLeft}>
+                    <Text style={styles.heroTitle}>Welcome back{user?.name ? `, ${user.name}` : ''}!</Text>
+                    <Text style={styles.heroSubtitle}>
+                        Monitor noise levels, review client reports, and manage the system from this portal.
+                    </Text>
+                </View>
+                <View style={styles.heroCardRight}>
+                    <MaterialIcons name="graphic-eq" size={48} color={Colors.primaryMid} />
+                </View>
+            </View>
+
+            <View style={styles.kpiRow}>
+                <View style={styles.kpiCard}>
+                    <MaterialIcons name="today" size={18} color={Colors.textMuted} style={styles.kpiIcon} />
+                    <Text style={styles.kpiLabel}>Reports Today</Text>
+                    <Text style={styles.kpiValue}>{reportSummary.reports_today}</Text>
+                </View>
+                <View style={styles.kpiCard}>
+                    <MaterialIcons name="pending-actions" size={18} color={Colors.statusWarning} style={styles.kpiIcon} />
+                    <Text style={styles.kpiLabel}>Pending Review</Text>
+                    <Text style={[styles.kpiValue, { color: Colors.statusWarning }]}>{reportSummary.pending_reports}</Text>
+                </View>
+                <View style={styles.kpiCard}>
+                    <MaterialIcons name="volume-up" size={18} color={Colors.textMuted} style={styles.kpiIcon} />
+                    <Text style={styles.kpiLabel}>24h Avg dB</Text>
+                    <Text style={styles.kpiValue}>{noise24h.average_decibels.toFixed(1)}</Text>
+                </View>
+                <View style={styles.kpiCard}>
+                    <MaterialIcons name="show-chart" size={18} color={Colors.textMuted} style={styles.kpiIcon} />
+                    <Text style={styles.kpiLabel}>7d Avg dB</Text>
+                    <Text style={styles.kpiValue}>{noise7d.average_decibels.toFixed(1)}</Text>
+                </View>
+            </View>
+
+            <View style={styles.noiseCard}>
+                <View style={styles.noiseTitleRow}>
+                    <Text style={styles.sectionTitle}>Noise Activity (Last 24 Hours)</Text>
+                    <View style={styles.noiseLegend}>
+                        <View style={[styles.legendDot, { backgroundColor: Colors.noiseNormal }]} />
+                        <Text style={styles.legendText}>Normal</Text>
+                        <View style={[styles.legendDot, { backgroundColor: Colors.noiseElevated }]} />
+                        <Text style={styles.legendText}>Elevated</Text>
+                        <View style={[styles.legendDot, { backgroundColor: Colors.noiseCritical }]} />
+                        <Text style={styles.legendText}>High</Text>
+                    </View>
+                </View>
+                <Text style={styles.summaryMeta}>
+                    {noise24h.noise_summary.Normal} Normal · {noise24h.noise_summary.Elevated} Elevated · {noise24h.noise_summary.High} High
+                </Text>
+                {isSummaryLoading ? (
+                    <Text style={styles.loadingText}>Loading data...</Text>
+                ) : (
+                    <View style={styles.noiseBarsRow}>
+                        {noise24h.graph.slice(-12).map((bucket, index) => (
+                            <View key={`${bucket.label}-${index}`} style={styles.noiseBarCol}>
+                                <View
+                                    style={[
+                                        styles.noiseBar,
+                                        {
+                                            height: Math.max(6, (bucket.avg_decibels / maxNoiseBucket) * 80),
+                                            backgroundColor:
+                                                bucket.avg_decibels >= 70
+                                                    ? Colors.noiseCritical
+                                                    : bucket.avg_decibels >= 55
+                                                        ? Colors.noiseElevated
+                                                        : Colors.noiseNormal,
+                                        },
+                                    ]}
+                                />
+                                <Text style={styles.noiseBarLabel}>{bucket.label}</Text>
+                            </View>
+                        ))}
+                    </View>
+                )}
+            </View>
+
+            <View style={styles.recentCard}>
+                <Text style={styles.sectionTitle}>Recent Client Reports</Text>
+                {recentReports.length === 0 ? (
+                    <View style={styles.emptyReports}>
+                        <MaterialIcons name="inbox" size={28} color={Colors.textMuted} />
+                        <Text style={styles.loadingText}>No submitted reports yet.</Text>
+                    </View>
+                ) : (
+                    recentReports.slice(0, 5).map((report, index) => (
+                        <View key={`${report.created_at || 'item'}-${index}`} style={styles.reportRow}>
+                            <View
+                                style={[
+                                    styles.reportDot,
+                                    {
+                                        backgroundColor:
+                                            report.status === 'pending'
+                                                ? Colors.statusWarning
+                                                : Colors.noiseNormal,
+                                    },
+                                ]}
+                            />
+                            <View style={styles.reportBody}>
+                                <Text style={styles.reportTimeLabel}>
+                                    {report.created_at ? new Date(report.created_at).toLocaleString() : 'Unknown time'}
+                                    <Text style={[styles.reportStatus, { color: report.status === 'pending' ? Colors.statusWarning : Colors.noiseNormal }]}>
+                                        {' '}· {report.status ?? 'unknown'}
+                                    </Text>
+                                </Text>
+                                <Text style={styles.reportText} numberOfLines={2}>
+                                    {report.report_text || 'Image-only report submission'}
+                                </Text>
+                            </View>
+                        </View>
+                    ))
+                )}
+            </View>
+        </ScrollView>
+    );
+
     const renderContent = () => {
         switch (activeTab) {
-            case 'Users':
-                return <AdminUsers />;
-            case 'Reports':
-                return <AdminAnalytics />;
-            case 'Dashboard':
-            default:
-                return (
-                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.homeContentWrap}>
-                        <View style={styles.heroCard}>
-                            <Text style={styles.heroTitle}>Welcome to the Admin Portal</Text>
-                            <Text style={styles.heroSubtitle}>
-                                Monitor noise status, review client submissions, and make quick decisions from one page.
-                            </Text>
-                        </View>
-
-                        <View style={styles.kpiRow}>
-                            <View style={styles.kpiCard}>
-                                <Text style={styles.kpiLabel}>Reports Today</Text>
-                                <Text style={styles.kpiValue}>{reportSummary.reports_today}</Text>
-                            </View>
-                            <View style={styles.kpiCard}>
-                                <Text style={styles.kpiLabel}>Pending Review</Text>
-                                <Text style={[styles.kpiValue, { color: Colors.statusWarning }]}>{reportSummary.pending_reports}</Text>
-                            </View>
-                            <View style={styles.kpiCard}>
-                                <Text style={styles.kpiLabel}>24h Avg Decibels</Text>
-                                <Text style={styles.kpiValue}>{noise24h.average_decibels.toFixed(1)} dB</Text>
-                            </View>
-                            <View style={styles.kpiCard}>
-                                <Text style={styles.kpiLabel}>7d Avg Decibels</Text>
-                                <Text style={styles.kpiValue}>{noise7d.average_decibels.toFixed(1)} dB</Text>
-                            </View>
-                        </View>
-
-                        <View style={styles.summaryCard}>
-                            <Text style={styles.sectionTitle}>Noise Summary (Last 24 Hours)</Text>
-                            <Text style={styles.summaryMeta}>
-                                Normal: {noise24h.noise_summary.Normal} | Elevated: {noise24h.noise_summary.Elevated} | High: {noise24h.noise_summary.High}
-                            </Text>
-                            {isSummaryLoading ? (
-                                <Text style={styles.loadingText}>Loading summary...</Text>
-                            ) : (
-                                <View style={styles.noiseBarsRow}>
-                                    {noise24h.graph.slice(-8).map((bucket, index) => (
-                                        <View key={`${bucket.label}-${index}`} style={styles.noiseBarCol}>
-                                            <View
-                                                style={[
-                                                    styles.noiseBar,
-                                                    {
-                                                        height: Math.max(6, (bucket.avg_decibels / maxNoiseBucket) * 70),
-                                                        backgroundColor:
-                                                            bucket.avg_decibels >= 70
-                                                                ? Colors.noiseCritical
-                                                                : bucket.avg_decibels >= 55
-                                                                    ? Colors.noiseElevated
-                                                                    : Colors.noiseNormal,
-                                                    },
-                                                ]}
-                                            />
-                                            <Text style={styles.noiseBarLabel}>{bucket.label}</Text>
-                                        </View>
-                                    ))}
-                                </View>
-                            )}
-                        </View>
-
-                        <View style={styles.summaryCard}>
-                            <Text style={styles.sectionTitle}>Recent Client Reports</Text>
-                            {recentReports.length === 0 ? (
-                                <Text style={styles.loadingText}>No submitted reports yet.</Text>
-                            ) : (
-                                recentReports.slice(0, 4).map((report, index) => (
-                                    <View key={`${report.created_at || 'item'}-${index}`} style={styles.reportRow}>
-                                        <View
-                                            style={[
-                                                styles.reportDot,
-                                                {
-                                                    backgroundColor:
-                                                        report.status === 'pending'
-                                                            ? Colors.statusWarning
-                                                            : Colors.noiseNormal,
-                                                },
-                                            ]}
-                                        />
-                                        <View style={styles.reportBody}>
-                                            <Text style={styles.reportTimeLabel}>
-                                                {report.created_at ? new Date(report.created_at).toLocaleString() : 'Unknown time'}
-                                            </Text>
-                                            <Text style={styles.reportText} numberOfLines={2}>
-                                                {report.report_text || 'Image-only report submission'}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                ))
-                            )}
-                        </View>
-                    </ScrollView>
-                );
+            case 'Users': return <AdminUsers />;
+            case 'Reports': return <AdminAnalytics />;
+            case 'Handover': return <AdminHandover />;
+            default: return renderDashboard();
         }
     };
 
-    const renderNav = () => (
-        <View style={[styles.navWrap, isCompact && styles.navWrapCompact]}>
-            <View>
-                <Text style={styles.logo}>Bagumbayan Admin</Text>
-                <Text style={styles.logoSub}>Noise Monitoring Control</Text>
+    const renderSideNav = () => (
+        <View style={styles.navWrap}>
+            <View style={styles.navBrand}>
+                <View style={styles.navLogoIcon}>
+                    <MaterialIcons name="graphic-eq" size={20} color={Colors.textOnDark} />
+                </View>
+                <View>
+                    <Text style={styles.logo}>Bagumbayan</Text>
+                    <Text style={styles.logoSub}>Admin Portal</Text>
+                </View>
             </View>
 
-            <View style={[styles.navLinks, isCompact && styles.navLinksCompact]}>
+            <View style={styles.navDivider} />
+
+            <View style={styles.navLinks}>
                 {NAV_ITEMS.map((item) => {
                     const isActive = activeTab === item.key;
                     return (
                         <TouchableOpacity
                             key={item.key}
                             onPress={() => setActiveTab(item.key)}
-                            style={[styles.navItem, isCompact && styles.navItemCompact, isActive && styles.navItemActive]}
+                            style={[styles.navItem, isActive && styles.navItemActive]}
                         >
                             <MaterialIcons
                                 name={item.icon}
                                 size={18}
                                 color={isActive ? Colors.textOnDark : Colors.textOnDarkSub}
                             />
-                            <Text style={[styles.navText, isActive && styles.navTextActive]}>{item.key}</Text>
+                            <Text style={[styles.navText, isActive && styles.navTextActive]}>{item.label}</Text>
                         </TouchableOpacity>
                     );
                 })}
             </View>
 
-            <TouchableOpacity onPress={logout} style={styles.logoutButton}>
-                <MaterialIcons name="logout" size={18} color={Colors.statusCritical} />
-                <Text style={styles.logoutText}>Logout</Text>
-            </TouchableOpacity>
+            <View style={styles.navBottom}>
+                <View style={styles.navDivider} />
+                <TouchableOpacity onPress={logout} style={styles.logoutButton}>
+                    <MaterialIcons name="logout" size={16} color={Colors.statusCritical} />
+                    <Text style={styles.logoutText}>Sign Out</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
+
+    const renderTopBar = () => (
+        <View style={[styles.topBar, isCompact && styles.topBarCompact]}>
+            {isCompact && (
+                <View style={styles.topBarNavRow}>
+                    {NAV_ITEMS.map((item) => {
+                        const isActive = activeTab === item.key;
+                        return (
+                            <TouchableOpacity
+                                key={item.key}
+                                onPress={() => setActiveTab(item.key)}
+                                style={[styles.topNavItem, isActive && styles.topNavItemActive]}
+                            >
+                                <MaterialIcons
+                                    name={item.icon}
+                                    size={16}
+                                    color={isActive ? Colors.primaryDark : Colors.textMuted}
+                                />
+                                <Text style={[styles.topNavText, isActive && styles.topNavTextActive]}>{item.key}</Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+            )}
+            <View style={styles.topBarInfo}>
+                <View>
+                    <Text style={styles.topBarTitle}>{TAB_META[activeTab].title}</Text>
+                    <Text style={styles.topBarSub}>{TAB_META[activeTab].description}</Text>
+                </View>
+                <Text style={styles.dateText}>{dateLabel}</Text>
+            </View>
         </View>
     );
 
     return (
         <View style={[styles.container, isCompact && styles.containerCompact]}>
-            {renderNav()}
-            <View style={[styles.content, isCompact && styles.contentCompact]}>
-                <View style={styles.topBar}>
-                    <View>
-                        <Text style={styles.topBarTitle}>{activeTab}</Text>
-                        <Text style={styles.topBarSub}>Administrative workspace</Text>
-                    </View>
-                    <Text style={styles.dateText}>{dateLabel}</Text>
-                </View>
-
-                <View style={[styles.contentCard, isCompact && styles.contentCardCompact]}>
+            {!isCompact && renderSideNav()}
+            <View style={[styles.mainArea, isCompact && styles.mainAreaCompact]}>
+                {renderTopBar()}
+                <View style={styles.contentCard}>
                     {renderContent()}
                 </View>
             </View>
@@ -267,41 +333,49 @@ const styles = StyleSheet.create({
     containerCompact: {
         flexDirection: 'column',
     },
+
+    // Side navigation (wide screen)
     navWrap: {
-        width: 260,
+        width: 240,
         backgroundColor: Colors.primaryDark,
-        padding: 24,
-        borderRightWidth: 1,
-        borderRightColor: Colors.transparentWhite12,
+        paddingTop: 24,
+        paddingBottom: 20,
+        paddingHorizontal: 16,
+        flexDirection: 'column',
     },
-    navWrapCompact: {
-        width: '100%',
-        borderRightWidth: 0,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.transparentWhite12,
-        paddingBottom: 14,
+    navBrand: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 4,
+        marginBottom: 20,
+    },
+    navLogoIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        backgroundColor: Colors.transparentWhite16,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     logo: {
-        fontSize: 20,
+        fontSize: 16,
         fontWeight: '700',
         color: Colors.textOnDark,
-        marginBottom: 2,
     },
     logoSub: {
         color: Colors.textOnDarkSub,
-        fontSize: 12,
+        fontSize: 11,
+    },
+    navDivider: {
+        height: 1,
+        backgroundColor: Colors.transparentWhite12,
+        marginVertical: 8,
     },
     navLinks: {
-        marginTop: 28,
-        gap: 10,
         flex: 1,
-    },
-    navLinksCompact: {
-        flexDirection: 'row',
-        marginTop: 16,
-        flexWrap: 'wrap',
-        gap: 10,
-        flex: 0,
+        gap: 2,
+        marginTop: 4,
     },
     navItem: {
         flexDirection: 'row',
@@ -310,50 +384,107 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         paddingVertical: 10,
         paddingHorizontal: 12,
-        backgroundColor: Colors.transparent,
-    },
-    navItemCompact: {
-        borderWidth: 1,
-        borderColor: Colors.transparentWhite22,
     },
     navItemActive: {
         backgroundColor: Colors.transparentWhite16,
     },
     navText: {
-        fontSize: 15,
+        fontSize: 14,
         color: Colors.textOnDarkSub,
     },
     navTextActive: {
         color: Colors.textOnDark,
-        fontWeight: '700',
+        fontWeight: '600',
     },
-    content: {
+    navBottom: {
+        marginTop: 8,
+    },
+    logoutButton: {
+        marginTop: 8,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        backgroundColor: 'rgba(220,53,69,0.12)',
+        borderRadius: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    logoutText: {
+        color: Colors.statusCritical,
+        fontWeight: '600',
+        fontSize: 14,
+    },
+
+    // Main content area
+    mainArea: {
         flex: 1,
-        padding: 24,
+        flexDirection: 'column',
         backgroundColor: Colors.bgBase,
+        padding: 24,
+        gap: 16,
     },
-    contentCompact: {
+    mainAreaCompact: {
         padding: 14,
+        gap: 12,
     },
+
+    // Top bar
     topBar: {
-        marginBottom: 16,
+        gap: 10,
+    },
+    topBarCompact: {
+        gap: 12,
+    },
+    topBarNavRow: {
+        flexDirection: 'row',
+        gap: 6,
+        flexWrap: 'wrap',
+        backgroundColor: Colors.bgCard,
+        borderRadius: 12,
+        padding: 8,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+    },
+    topNavItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRadius: 8,
+    },
+    topNavItemActive: {
+        backgroundColor: Colors.bgMuted,
+    },
+    topNavText: {
+        fontSize: 13,
+        color: Colors.textMuted,
+    },
+    topNavTextActive: {
+        color: Colors.primaryDark,
+        fontWeight: '600',
+    },
+    topBarInfo: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
     },
     topBarTitle: {
-        fontSize: 24,
+        fontSize: 22,
         fontWeight: '700',
         color: Colors.textPrimary,
     },
     topBarSub: {
         fontSize: 13,
         color: Colors.textSecondary,
+        marginTop: 1,
     },
     dateText: {
         fontSize: 13,
         color: Colors.textMuted,
     },
+
+    // Content card
     contentCard: {
         flex: 1,
         backgroundColor: Colors.bgCard,
@@ -367,28 +498,36 @@ const styles = StyleSheet.create({
         shadowRadius: 10,
         elevation: 2,
     },
-    contentCardCompact: {
-        padding: 14,
-    },
+
+    // Dashboard content
     homeContentWrap: {
         gap: 16,
         paddingBottom: 12,
     },
     heroCard: {
-        backgroundColor: Colors.bgMuted,
+        backgroundColor: Colors.primaryDark,
         borderRadius: 14,
-        padding: 18,
+        padding: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    heroCardLeft: {
+        flex: 1,
+    },
+    heroCardRight: {
+        opacity: 0.4,
+        marginLeft: 12,
     },
     heroTitle: {
-        fontSize: 24,
+        fontSize: 20,
         fontWeight: '700',
-        color: Colors.primaryDark,
-        marginBottom: 8,
+        color: Colors.textOnDark,
+        marginBottom: 6,
     },
     heroSubtitle: {
-        fontSize: 14,
-        color: Colors.textSecondary,
-        lineHeight: 20,
+        fontSize: 13,
+        color: Colors.textOnDarkSub,
+        lineHeight: 19,
     },
     kpiRow: {
         flexDirection: 'row',
@@ -397,79 +536,117 @@ const styles = StyleSheet.create({
     },
     kpiCard: {
         flex: 1,
-        minWidth: 160,
+        minWidth: 140,
         borderWidth: 1,
         borderColor: Colors.borderLight,
         borderRadius: 12,
         backgroundColor: Colors.bgCard,
         padding: 14,
     },
+    kpiIcon: {
+        marginBottom: 8,
+    },
     kpiLabel: {
-        fontSize: 12,
+        fontSize: 11,
         color: Colors.textSecondary,
-        marginBottom: 6,
+        marginBottom: 4,
     },
     kpiValue: {
-        fontSize: 26,
+        fontSize: 24,
         fontWeight: '700',
         color: Colors.primaryDark,
+    },
+    noiseCard: {
+        backgroundColor: Colors.bgCard,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+        borderRadius: 12,
+        padding: 16,
+    },
+    noiseTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    noiseLegend: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    legendDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+    },
+    legendText: {
+        fontSize: 11,
+        color: Colors.textMuted,
+        marginRight: 4,
     },
     sectionTitle: {
         fontSize: 15,
         fontWeight: '700',
         color: Colors.textPrimary,
-        marginBottom: 10,
-    },
-    summaryCard: {
-        backgroundColor: Colors.bgCard,
-        borderWidth: 1,
-        borderColor: Colors.borderLight,
-        borderRadius: 12,
-        padding: 14,
     },
     summaryMeta: {
-        marginTop: 6,
-        marginBottom: 8,
-        fontSize: 13,
+        fontSize: 12,
         color: Colors.textSecondary,
+        marginBottom: 12,
     },
     loadingText: {
         fontSize: 13,
         color: Colors.textMuted,
+        marginTop: 8,
     },
     noiseBarsRow: {
         flexDirection: 'row',
         alignItems: 'flex-end',
-        gap: 8,
-        marginTop: 8,
+        gap: 6,
+        marginTop: 4,
     },
     noiseBarCol: {
         alignItems: 'center',
-        width: 24,
+        flex: 1,
     },
     noiseBar: {
-        width: 14,
+        width: '80%',
         borderTopLeftRadius: 4,
         borderTopRightRadius: 4,
     },
     noiseBarLabel: {
         marginTop: 4,
-        fontSize: 10,
+        fontSize: 9,
         color: Colors.textMuted,
+    },
+    recentCard: {
+        backgroundColor: Colors.bgCard,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+        borderRadius: 12,
+        padding: 16,
+        gap: 4,
+    },
+    emptyReports: {
+        alignItems: 'center',
+        paddingVertical: 20,
+        gap: 8,
     },
     reportRow: {
         flexDirection: 'row',
         alignItems: 'flex-start',
-        gap: 8,
-        paddingVertical: 8,
+        gap: 10,
+        paddingVertical: 10,
         borderTopWidth: 1,
         borderTopColor: Colors.borderLight,
     },
     reportDot: {
-        width: 10,
-        height: 10,
+        width: 9,
+        height: 9,
         borderRadius: 999,
-        marginTop: 6,
+        marginTop: 5,
     },
     reportBody: {
         flex: 1,
@@ -477,25 +654,14 @@ const styles = StyleSheet.create({
     reportTimeLabel: {
         fontSize: 12,
         color: Colors.textMuted,
-        marginBottom: 4,
+        marginBottom: 3,
+    },
+    reportStatus: {
+        fontSize: 11,
+        fontWeight: '600',
     },
     reportText: {
         fontSize: 14,
         color: Colors.textPrimary,
-    },
-    logoutButton: {
-        marginTop: 18,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        backgroundColor: 'rgba(255,0,0,0.1)',
-        borderRadius: 10,
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'row',
-        gap: 8,
-    },
-    logoutText: {
-        color: Colors.statusCritical,
-        fontWeight: '700',
     },
 });

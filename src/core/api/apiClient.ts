@@ -1,19 +1,43 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeModules, Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 const isDev = typeof __DEV__ !== 'undefined' && __DEV__;
 
+const DEV_API_PORT = '5000';
+
+const sanitizeHost = (value: string): string =>
+    value
+        .trim()
+        .replace(/^https?:\/\//, '')
+        .replace(/\/$/, '')
+        .split(':')[0];
+
+const toBaseUrl = (host: string): string => `http://${sanitizeHost(host)}:${DEV_API_PORT}`;
+
 const resolveWebApiBaseUrl = (): string => {
     if (typeof window === 'undefined') {
-        return 'http://127.0.0.1:5000';
+        return `http://127.0.0.1:${DEV_API_PORT}`;
     }
     const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
     const hostname = window.location.hostname || '127.0.0.1';
-    return `${protocol}//${hostname}:5000`;
+    return `${protocol}//${hostname}:${DEV_API_PORT}`;
 };
 
 const getDevHostFromBundleUrl = (): string | null => {
+    const expoHostUri =
+        Constants?.expoConfig?.hostUri ||
+        (Constants as any)?.manifest2?.extra?.expoClient?.hostUri ||
+        (Constants as any)?.expoGoConfig?.debuggerHost;
+
+    if (expoHostUri) {
+        const host = String(expoHostUri).split(':')[0];
+        if (host && host !== 'localhost' && host !== '127.0.0.1') {
+            return host;
+        }
+    }
+
     const scriptURL = NativeModules?.SourceCode?.scriptURL as string | undefined;
     if (!scriptURL) {
         return null;
@@ -32,17 +56,28 @@ const getDevHostFromBundleUrl = (): string | null => {
 };
 
 const getNativeDevBaseUrl = (): string => {
+    const configuredHost = process.env.EXPO_PUBLIC_DEV_API_HOST?.trim();
+    if (configuredHost) {
+        return toBaseUrl(configuredHost);
+    }
+
     const devHost = getDevHostFromBundleUrl();
     if (devHost) {
-        return `http://${devHost}:5000`;
+        return toBaseUrl(devHost);
     }
 
     if (Platform.OS === 'android') {
         // Android emulator maps host loopback to 10.0.2.2.
-        return 'http://10.0.2.2:5000';
+        return `http://10.0.2.2:${DEV_API_PORT}`;
     }
 
-    return 'http://127.0.0.1:5000';
+    if (Platform.OS === 'ios') {
+        // iOS simulator can reach host via localhost.
+        return `http://localhost:${DEV_API_PORT}`;
+    }
+
+    // Last-resort fallback for physical devices: set EXPO_PUBLIC_DEV_API_HOST to your LAN IP.
+    return `http://localhost:${DEV_API_PORT}`;
 };
 
 const NATIVE_PROD_BASE_URL = 'https://api.bagumbayan-noise.com/v1';
@@ -58,9 +93,14 @@ const API_BASE_URL =
 const getFallbackBaseUrls = (): string[] => {
     const urls = new Set<string>();
 
+    const configuredHost = process.env.EXPO_PUBLIC_DEV_API_HOST?.trim();
+    if (configuredHost) {
+        urls.add(toBaseUrl(configuredHost));
+    }
+
     const envFallbacks = (process.env.EXPO_PUBLIC_API_FALLBACK_URLS || '')
         .split(',')
-        .map((value) => value.trim())
+        .map((value: string) => value.trim())
         .filter(Boolean);
 
     for (const url of envFallbacks) {
@@ -77,11 +117,12 @@ const getFallbackBaseUrls = (): string[] => {
     if (isDev) {
         const devHost = getDevHostFromBundleUrl();
         if (devHost) {
-            urls.add(`http://${devHost}:5000`);
+            urls.add(toBaseUrl(devHost));
         }
         urls.add(getNativeDevBaseUrl());
-        urls.add('http://localhost:5000');
-        urls.add('http://127.0.0.1:5000');
+        urls.add(`http://localhost:${DEV_API_PORT}`);
+        urls.add(`http://127.0.0.1:${DEV_API_PORT}`);
+        urls.add(`http://10.0.2.2:${DEV_API_PORT}`);
     }
 
     return Array.from(urls);
@@ -123,18 +164,25 @@ apiClient.interceptors.response.use(
     async (error) => {
         const originalRequest = error?.config;
 
-        // Retry once with alternate base URL when request fails to reach server.
+        // Retry with alternate base URLs when request fails to reach server.
         if (
             originalRequest &&
-            !error?.response &&
-            !originalRequest.__retriedWithFallback
+            !error?.response
         ) {
-            const candidates = getFallbackBaseUrls();
-            const currentBase = originalRequest.baseURL || API_BASE_URL;
-            const nextBase = candidates.find((url) => url !== currentBase);
+            const currentBase = (originalRequest.baseURL || API_BASE_URL) as string;
+            const sequence = originalRequest.__fallbackSequence || [
+                currentBase,
+                ...getFallbackBaseUrls().filter((url) => url !== currentBase),
+            ];
+            const currentIndex = typeof originalRequest.__fallbackIndex === 'number'
+                ? originalRequest.__fallbackIndex
+                : sequence.findIndex((url: string) => url === currentBase);
+            const nextIndex = currentIndex + 1;
+            const nextBase = sequence[nextIndex];
 
             if (nextBase) {
-                originalRequest.__retriedWithFallback = true;
+                originalRequest.__fallbackSequence = sequence;
+                originalRequest.__fallbackIndex = nextIndex;
                 originalRequest.baseURL = nextBase;
                 return apiClient.request(originalRequest);
             }

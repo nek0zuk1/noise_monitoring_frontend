@@ -12,7 +12,6 @@ import {
     Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
 import { Colors } from '../../../core/theme/Colors';
 import { AuthContext } from '../../../core/auth/AuthContext';
 import AnimatedScreen from '../../../components/AnimatedScreen';
@@ -20,25 +19,26 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiClient } from '../../../core/api/apiClient';
 
 export default function LoginScreen() {
-    const navigation = useNavigation<any>();
     const { loginWithUser } = useContext(AuthContext);
     const insets = useSafeAreaInsets();
 
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
     const fadeAnim = React.useRef(new Animated.Value(0)).current;
-    const slideAnim = React.useRef(new Animated.Value(28)).current;
+    const slideAnim = React.useRef(new Animated.Value(20)).current;
 
     React.useEffect(() => {
         Animated.parallel([
-            Animated.timing(fadeAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
-            Animated.timing(slideAnim, { toValue: 0, duration: 900, useNativeDriver: true }),
+            Animated.timing(fadeAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+            Animated.timing(slideAnim, { toValue: 0, duration: 700, useNativeDriver: true }),
         ]).start();
     }, [fadeAnim, slideAnim]);
 
     const handleLogin = async () => {
         if (!username || !password) return;
+        setIsLoading(true);
         try {
             const response = await apiClient.post('/api/auth/login', {
                 username: username.trim().toLowerCase(),
@@ -60,49 +60,135 @@ export default function LoginScreen() {
             });
         } catch (error: any) {
             const statusCode = error?.response?.status;
-            const serverMessage = error?.response?.data?.error;
+            const serverMessage = error?.response?.data?.detail || error?.response?.data?.error;
             const requestBaseUrl = error?.config?.baseURL || apiClient.defaults.baseURL;
-
-            const message = serverMessage
-                || (statusCode
-                    ? `Unable to log in (${statusCode}). Please verify your username and password.`
+            const message =
+                serverMessage ||
+                (statusCode
+                    ? `Unable to log in (${statusCode}). Please verify your credentials.`
                     : `Unable to reach server. Check API URL: ${requestBaseUrl}`);
             Alert.alert('Login failed', message);
+        } finally {
+            setIsLoading(false);
         }
     };
 
+    // Web layout: side-by-side branding + compact form
+    if (Platform.OS === 'web') {
+        return (
+            <View style={webStyles.root}>
+                {/* Left branding panel */}
+                <View style={webStyles.brandPanel}>
+                    <Animated.View style={[webStyles.brandContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+                        <View style={webStyles.brandIcon}>
+                            <MaterialIcons name="graphic-eq" size={32} color={Colors.primaryPale} />
+                        </View>
+                        <Text style={webStyles.brandSystem}>Bagumbayan Norte</Text>
+                        <Text style={webStyles.brandTitle}>Noise Monitoring{'\n'}System</Text>
+                        <Text style={webStyles.brandDesc}>
+                            Administrative portal for monitoring noise levels, managing reports, and overseeing client accounts.
+                        </Text>
+                        <View style={webStyles.brandFeatures}>
+                            {['Real-time noise analytics', 'Client report management', 'User account control'].map((f) => (
+                                <View key={f} style={webStyles.brandFeatureRow}>
+                                    <MaterialIcons name="check-circle" size={14} color={Colors.primaryPale} />
+                                    <Text style={webStyles.brandFeatureText}>{f}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    </Animated.View>
+                </View>
+
+                {/* Right form panel */}
+                <View style={webStyles.formPanel}>
+                    <Animated.View style={[webStyles.formCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+                        <View style={webStyles.formHeader}>
+                            <Text style={webStyles.formTitle}>Sign In</Text>
+                            <Text style={webStyles.formSubtitle}>Enter your admin credentials to continue</Text>
+                        </View>
+
+                        <View style={webStyles.inputGroup}>
+                            <Text style={webStyles.label}>Username</Text>
+                            <View style={webStyles.inputRow}>
+                                <MaterialIcons name="person-outline" size={18} color={Colors.textMuted} />
+                                <TextInput
+                                    style={webStyles.input}
+                                    placeholder="Enter username"
+                                    placeholderTextColor={Colors.textMuted}
+                                    autoCapitalize="none"
+                                    value={username}
+                                    onChangeText={setUsername}
+                                />
+                            </View>
+                        </View>
+
+                        <View style={webStyles.inputGroup}>
+                            <Text style={webStyles.label}>Password</Text>
+                            <View style={webStyles.inputRow}>
+                                <MaterialIcons name="lock-outline" size={18} color={Colors.textMuted} />
+                                <TextInput
+                                    style={webStyles.input}
+                                    placeholder="Enter password"
+                                    placeholderTextColor={Colors.textMuted}
+                                    secureTextEntry
+                                    value={password}
+                                    onChangeText={setPassword}
+                                />
+                            </View>
+                        </View>
+
+                        <TouchableOpacity
+                            style={[webStyles.loginButton, (!username || !password || isLoading) && webStyles.loginButtonDisabled]}
+                            activeOpacity={0.8}
+                            onPress={handleLogin}
+                            disabled={!username || !password || isLoading}
+                        >
+                            {isLoading ? (
+                                <Text style={webStyles.loginButtonText}>Signing in...</Text>
+                            ) : (
+                                <View style={webStyles.loginButtonInner}>
+                                    <Text style={webStyles.loginButtonText}>Sign In</Text>
+                                    <MaterialIcons name="arrow-forward" size={18} color={Colors.textOnDark} />
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                    </Animated.View>
+                </View>
+            </View>
+        );
+    }
+
+    // Mobile layout: compact scrollable form
     return (
         <AnimatedScreen>
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.container}
+                style={mobileStyles.container}
             >
                 <ScrollView
-                    contentContainerStyle={styles.scrollContent}
+                    contentContainerStyle={mobileStyles.scrollContent}
                     showsVerticalScrollIndicator={false}
                     bounces={false}
                 >
-                    <View style={[styles.hero, { paddingTop: insets.top + 44 }]}>
-                        <View style={styles.heroBadge}>
-                            <MaterialIcons name="graphic-eq" size={12} color={Colors.primaryPale} />
-                            <Text style={styles.heroBadgeText}>Authentication</Text>
+                    <View style={[mobileStyles.hero, { paddingTop: insets.top + 28 }]}>
+                        <View style={mobileStyles.heroBadge}>
+                            <MaterialIcons name="graphic-eq" size={11} color={Colors.primaryPale} />
+                            <Text style={mobileStyles.heroBadgeText}>Authentication</Text>
                         </View>
-
                         <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-                            <Text style={styles.heroTitle}>Welcome!</Text>
-                            <Text style={styles.heroSub}>Sign in to Bagumbayan Norte Noise Monitoring System</Text>
+                            <Text style={mobileStyles.heroTitle}>Welcome!</Text>
+                            <Text style={mobileStyles.heroSub}>Sign in to Bagumbayan Norte Noise Monitoring System</Text>
                         </Animated.View>
                     </View>
 
-                    <View style={styles.formContainer}>
-                        <View style={styles.form}>
-
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Username</Text>
-                                <View style={styles.inputContainer}>
-                                    <MaterialIcons name="person" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+                    <View style={mobileStyles.formContainer}>
+                        <View style={mobileStyles.form}>
+                            <View style={mobileStyles.inputGroup}>
+                                <Text style={mobileStyles.label}>Username</Text>
+                                <View style={mobileStyles.inputContainer}>
+                                    <MaterialIcons name="person" size={18} color={Colors.textMuted} style={mobileStyles.inputIcon} />
                                     <TextInput
-                                        style={styles.input}
+                                        style={mobileStyles.input}
                                         placeholder="Enter your username"
                                         placeholderTextColor={Colors.textMuted}
                                         autoCapitalize="none"
@@ -112,12 +198,12 @@ export default function LoginScreen() {
                                 </View>
                             </View>
 
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Password</Text>
-                                <View style={styles.inputContainer}>
-                                    <MaterialIcons name="lock" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+                            <View style={mobileStyles.inputGroup}>
+                                <Text style={mobileStyles.label}>Password</Text>
+                                <View style={mobileStyles.inputContainer}>
+                                    <MaterialIcons name="lock" size={18} color={Colors.textMuted} style={mobileStyles.inputIcon} />
                                     <TextInput
-                                        style={styles.input}
+                                        style={mobileStyles.input}
                                         placeholder="Enter your password"
                                         placeholderTextColor={Colors.textMuted}
                                         secureTextEntry
@@ -129,21 +215,20 @@ export default function LoginScreen() {
 
                             <TouchableOpacity
                                 style={[
-                                    styles.loginButton,
-                                    (!username || !password) && styles.loginButtonDisabled
+                                    mobileStyles.loginButton,
+                                    (!username || !password || isLoading) && mobileStyles.loginButtonDisabled,
                                 ]}
                                 activeOpacity={0.8}
                                 onPress={handleLogin}
-                                disabled={!username || !password}
+                                disabled={!username || !password || isLoading}
                             >
-                                <Text style={styles.loginButtonText}>Sign In</Text>
+                                <Text style={mobileStyles.loginButtonText}>{isLoading ? 'Signing in...' : 'Sign In'}</Text>
                             </TouchableOpacity>
                         </View>
 
-                        <View style={styles.footer}>
-                            <Text style={styles.footerText}>Please contact your administrator to create an account.</Text>
-                        </View>
-
+                        <Text style={mobileStyles.footerText}>
+                            Contact your administrator to create an account.
+                        </Text>
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>
@@ -151,78 +236,227 @@ export default function LoginScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+// ─── Web styles ──────────────────────────────────────────────
+const webStyles = StyleSheet.create({
+    root: {
+        flex: 1,
+        flexDirection: 'row',
+        backgroundColor: Colors.bgBase,
+    },
+    brandPanel: {
+        width: '45%',
+        backgroundColor: Colors.primaryDark,
+        padding: 48,
+        justifyContent: 'center',
+    },
+    brandContent: {
+        maxWidth: 360,
+    },
+    brandIcon: {
+        width: 56,
+        height: 56,
+        borderRadius: 16,
+        backgroundColor: Colors.transparentWhite12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 24,
+    },
+    brandSystem: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: Colors.primaryPale,
+        letterSpacing: 0.5,
+        marginBottom: 8,
+        textTransform: 'uppercase',
+    },
+    brandTitle: {
+        fontSize: 36,
+        fontWeight: '800',
+        color: Colors.textOnDark,
+        lineHeight: 44,
+        marginBottom: 16,
+    },
+    brandDesc: {
+        fontSize: 14,
+        color: Colors.textOnDarkSub,
+        lineHeight: 22,
+        marginBottom: 28,
+    },
+    brandFeatures: {
+        gap: 10,
+    },
+    brandFeatureRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    brandFeatureText: {
+        fontSize: 13,
+        color: Colors.textOnDarkSub,
+    },
+    formPanel: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 40,
+        backgroundColor: Colors.bgBase,
+    },
+    formCard: {
+        width: '100%',
+        maxWidth: 380,
+        backgroundColor: Colors.bgCard,
+        borderRadius: 20,
+        padding: 32,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+        shadowColor: Colors.shadow,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.08,
+        shadowRadius: 24,
+        elevation: 8,
+    },
+    formHeader: {
+        marginBottom: 24,
+    },
+    formTitle: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: Colors.textPrimary,
+        marginBottom: 4,
+    },
+    formSubtitle: {
+        fontSize: 13,
+        color: Colors.textSecondary,
+    },
+    inputGroup: {
+        marginBottom: 16,
+    },
+    label: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: Colors.textSecondary,
+        marginBottom: 6,
+    },
+    inputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        backgroundColor: Colors.bgBase,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+        height: 44,
+        paddingHorizontal: 12,
+    },
+    input: {
+        flex: 1,
+        fontSize: 14,
+        color: Colors.textPrimary,
+        height: '100%',
+    },
+    loginButton: {
+        backgroundColor: Colors.primaryDark,
+        borderRadius: 10,
+        height: 46,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 8,
+        marginBottom: 20,
+    },
+    loginButtonDisabled: {
+        backgroundColor: Colors.textMuted,
+    },
+    loginButtonInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    loginButtonText: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: Colors.textOnDark,
+    },
+    footerNote: {
+        fontSize: 12,
+        color: Colors.textMuted,
+        textAlign: 'center',
+    },
+});
+
+// ─── Mobile styles ────────────────────────────────────────────
+const mobileStyles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: Colors.bgBase,
     },
     scrollContent: {
         flexGrow: 1,
-        paddingBottom: 40,
+        paddingBottom: 36,
     },
     hero: {
         backgroundColor: Colors.primaryDark,
         paddingHorizontal: 24,
-        paddingBottom: 64,
+        paddingBottom: 54,
         borderBottomLeftRadius: 36,
         borderBottomRightRadius: 36,
-        overflow: 'hidden',
         shadowColor: Colors.shadow,
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.22,
-        shadowRadius: 20,
-        elevation: 10,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.16,
+        shadowRadius: 12,
+        elevation: 8,
     },
     heroBadge: {
-        flexDirection: 'row', alignItems: 'center', gap: 4,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
         backgroundColor: Colors.transparentWhite12,
-        alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 5,
-        borderRadius: 20, marginBottom: 20,
+        alignSelf: 'flex-start',
+        paddingHorizontal: 14,
+        paddingVertical: 7,
+        borderRadius: 18,
+        marginBottom: 22,
     },
     heroBadgeText: { fontSize: 11, color: Colors.primaryPale, fontWeight: '600' },
     heroTitle: {
-        fontSize: 34, fontWeight: '800', color: Colors.textOnDark,
-        lineHeight: 42, marginBottom: 12,
-        textShadowColor: Colors.transparentBlack15,
-        textShadowOffset: { width: 0, height: 3 }, textShadowRadius: 8,
+        fontSize: 40,
+        fontWeight: '800',
+        color: Colors.textOnDark,
+        lineHeight: 48,
+        marginBottom: 10,
+        letterSpacing: -0.7,
     },
     heroSub: {
-        fontSize: 14, color: Colors.textOnDarkSub, lineHeight: 22,
+        fontSize: 14,
+        color: Colors.textOnDarkSub,
+        lineHeight: 22,
+        maxWidth: 320,
     },
-
     formContainer: {
-        paddingHorizontal: 24,
-        marginTop: -32,
+        paddingHorizontal: 18,
+        marginTop: -30,
+        width: '100%',
+        maxWidth: 480,
+        alignSelf: 'center',
     },
     form: {
         backgroundColor: Colors.bgCard,
-        borderRadius: 24,
-        padding: 24,
+        borderRadius: 34,
+        paddingHorizontal: 20,
+        paddingVertical: 26,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
         shadowColor: Colors.shadow,
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.08,
-        shadowRadius: 20,
-        elevation: 8,
-    },
-    formHeader: {
-        marginBottom: 12,
-    },
-    formTitle: {
-        fontSize: 18,
-        color: Colors.textPrimary,
-        fontWeight: '800',
-    },
-    formSub: {
-        marginTop: 4,
-        fontSize: 12,
-        color: Colors.textSecondary,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.1,
+        shadowRadius: 18,
+        elevation: 6,
     },
     inputGroup: {
-        marginBottom: 20,
+        marginBottom: 14,
     },
     label: {
         fontSize: 13,
-        fontWeight: '600',
+        fontWeight: '700',
         color: Colors.textSecondary,
         marginBottom: 8,
         marginLeft: 4,
@@ -230,65 +464,52 @@ const styles = StyleSheet.create({
     inputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Colors.bgBase,
-        borderRadius: 16,
+        backgroundColor: Colors.bgMuted,
+        borderRadius: 14,
         borderWidth: 1,
         borderColor: Colors.borderLight,
-        height: 56,
-        paddingHorizontal: 16,
+        height: 52,
+        paddingHorizontal: 14,
     },
     inputIcon: {
-        marginRight: 12,
+        marginRight: 10,
     },
     input: {
         flex: 1,
-        fontSize: 16,
+        fontSize: 15,
         color: Colors.textPrimary,
         height: '100%',
-    },
-    forgotPassword: {
-        alignSelf: 'flex-end',
-        marginBottom: 32,
-    },
-    forgotPasswordText: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: Colors.primaryMid,
     },
     loginButton: {
         backgroundColor: Colors.primaryDark,
         borderRadius: 16,
-        height: 56,
+        height: 54,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: Colors.primaryDark,
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.35,
-        shadowRadius: 12,
-        elevation: 6,
+        marginTop: 8,
+        shadowColor: Colors.shadow,
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.12,
+        shadowRadius: 8,
+        elevation: 5,
     },
     loginButtonDisabled: {
-        backgroundColor: Colors.textMuted,
+        backgroundColor: Colors.borderMuted,
         shadowOpacity: 0,
         elevation: 0,
     },
     loginButtonText: {
-        fontSize: 16,
+        fontSize: 18,
         fontWeight: '700',
         color: Colors.textOnDark,
-    },
-    footer: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        marginTop: 32,
     },
     footerText: {
         fontSize: 14,
         color: Colors.textSecondary,
-    },
-    footerLink: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: Colors.primaryMid,
+        textAlign: 'left',
+        marginTop: 30,
+        marginBottom: 10,
+        paddingHorizontal: 8,
+        lineHeight: 20,
     },
 });
