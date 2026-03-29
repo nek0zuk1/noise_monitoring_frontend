@@ -81,11 +81,26 @@ const getNativeDevBaseUrl = (): string => {
     return `http://localhost:${DEV_API_PORT}`;
 };
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
+const resolveApiBaseUrl = (): string => {
+    // Mobile should always target the deployed backend by default.
+    if (Platform.OS !== 'web') {
+        return DEFAULT_API_BASE_URL;
+    }
+
+    const configuredBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+    return configuredBaseUrl || DEFAULT_API_BASE_URL;
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 const getFallbackBaseUrls = (): string[] => {
     const urls = new Set<string>();
     urls.add(DEFAULT_API_BASE_URL);
+
+    // Keep native retries pinned to deployed backend to avoid localhost fallbacks.
+    if (Platform.OS !== 'web') {
+        return Array.from(urls);
+    }
 
     const configuredHost = process.env.EXPO_PUBLIC_DEV_API_HOST?.trim();
     if (configuredHost) {
